@@ -1,0 +1,13 @@
+[package]
+name = "blurlock"
+version = "0.1.0"
+authors = ["Robin McCorkell <robin@mccorkell.me.uk>"]
+edition = "2018"
+
+[dependencies]
+winit = "0.23.0"
+async-std = { version = "1.7.0", features = ["attributes"] }
+env_logger = "0.8.1"
+log = "0.4.11"
+wgpu = "0.6.0"
+futures = "0.3.8"
