@@ -18,6 +18,14 @@ struct Uniforms {
 unsafe impl bytemuck::Pod for Uniforms {}
 unsafe impl bytemuck::Zeroable for Uniforms {}
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+struct FrameUniforms {
+    time: f32,
+}
+unsafe impl bytemuck::Pod for FrameUniforms {}
+unsafe impl bytemuck::Zeroable for FrameUniforms {}
+
 pub struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -56,8 +64,11 @@ impl State {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    features: wgpu::Features::empty(),
-                    limits: wgpu::Limits::default(),
+                    features: wgpu::Features::PUSH_CONSTANTS,
+                    limits: wgpu::Limits {
+                        max_push_constant_size: 4,
+                        ..wgpu::Limits::default()
+                    },
                     shader_validation: true,
                 },
                 None, // Trace path
@@ -109,7 +120,10 @@ impl State {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render pipeline layout"),
                 bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
+                push_constant_ranges: &[wgpu::PushConstantRange {
+                    stages: wgpu::ShaderStage::FRAGMENT,
+                    range: 0..4,
+                }],
             });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -250,7 +264,7 @@ impl State {
         );
     }
 
-    pub fn render(&mut self) {
+    pub fn render(&mut self, time: f32) {
         let frame = self
             .swap_chain
             .get_current_frame()
@@ -269,9 +283,9 @@ impl State {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
+                        r: 1.0,
+                        g: 0.0,
+                        b: 0.0,
                         a: 1.0,
                     }),
                     store: true,
@@ -281,6 +295,11 @@ impl State {
         });
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]); // NEW!
+        render_pass.set_push_constants(
+            wgpu::ShaderStage::FRAGMENT,
+            0,
+            bytemuck::cast_slice(&[FrameUniforms { time }]),
+        );
         render_pass.draw(0..4, 0..1);
         drop(render_pass);
 

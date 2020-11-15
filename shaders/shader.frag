@@ -8,12 +8,20 @@ layout(set = 0, binding = 2) uniform Uniforms {
     vec2 iResolution;
 };
 
-// layout(set = 1, binding = 0) uniform FrameUniforms {
-//     float iTime;
-// };
+layout(push_constant) uniform FrameUniforms {
+    float iTime;
+};
+
+vec4 Desaturate(vec3 color, float Desaturation) {
+    vec3 grayXfer = vec3(0.3, 0.59, 0.11);
+    vec3 gray = vec3(dot(grayXfer, color));
+    return vec4(mix(color, gray, Desaturation), 1.0);
+}
 
 void main() {
-    vec2 tex_coord = gl_FragCoord.xy / iResolution;
-    tex_coord.y = 1.0 - tex_coord.y;
-    f_color = texture(sampler2D(t_screenshot, s_screenshot), tex_coord);
+    vec2 uv = gl_FragCoord.xy / iResolution;
+    uv.y = 1.0 - uv.y;
+    float desaturate = min(pow(iTime / 10.0, 1.0), 1.0);
+    float fade = min(pow(iTime / 10.0, 5.0), 1.0);
+    f_color = mix(Desaturate(texture(sampler2D(t_screenshot, s_screenshot), uv).rgb, desaturate), vec4(0.0, 0.0, 0.0, 1.0), fade);
 }

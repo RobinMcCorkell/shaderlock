@@ -14,6 +14,7 @@ pub struct State {
 pub struct Manager {
     screengrabber: Screengrabber,
     state: HashMap<WindowId, State>,
+    init_time: std::time::Instant,
 }
 
 impl Manager {
@@ -21,6 +22,7 @@ impl Manager {
         Self {
             screengrabber: Screengrabber::new(),
             state: HashMap::new(),
+            init_time: std::time::Instant::now(),
         }
     }
 
@@ -67,7 +69,8 @@ impl Manager {
                 let State {
                     ref mut graphics, ..
                 } = self.state.get_mut(&window_id).unwrap();
-                graphics.render();
+                let time = self.init_time.elapsed().as_secs_f32();
+                graphics.render(time);
             }
             Event::MainEventsCleared => {
                 for State { window, .. } in self.state.values() {
