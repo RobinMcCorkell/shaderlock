@@ -4,109 +4,11 @@ use winit::event_loop::EventLoop;
 use winit::monitor::*;
 use winit::window::*;
 
-use sctk::output::OutputHandler;
-use sctk::reexports::client as wl;
-use sctk::reexports::{
-    protocols::wlr::unstable::screencopy::v1::client::zwlr_screencopy_frame_v1,
-    protocols::wlr::unstable::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1,
-};
-use sctk::shm::ShmHandler;
-use wl::protocol::wl_buffer::WlBuffer;
-use wl::protocol::wl_output::WlOutput;
-use wl::protocol::wl_shm::WlShm;
+use crate::screengrab::Screengrabber;
 
 pub struct State {
     window: Window,
     graphics: crate::graphics::State,
-}
-
-pub struct WaylandEnv {
-    screencopy: sctk::environment::SimpleGlobal<ZwlrScreencopyManagerV1>,
-    shm: ShmHandler,
-    outputs: OutputHandler,
-}
-
-impl Default for WaylandEnv {
-    fn default() -> Self {
-        Self {
-            screencopy: sctk::environment::SimpleGlobal::new(),
-            shm: ShmHandler::new(),
-            outputs: OutputHandler::new(),
-        }
-    }
-}
-
-sctk::environment!(
-    WaylandEnv,
-    singles = [
-        ZwlrScreencopyManagerV1 => screencopy,
-        WlShm => shm,
-    ],
-    multis = [
-        WlOutput => outputs,
-    ],
-);
-
-struct Screengrabber {
-    event_queue: wl::EventQueue,
-    env: sctk::environment::Environment<WaylandEnv>,
-}
-
-impl Screengrabber {
-    fn new() -> Self {
-        let display = wl::Display::connect_to_env().expect("Failed to connect to Wayland");
-        let mut event_queue = display.create_event_queue();
-
-        let env = sctk::environment::Environment::new(
-            &wl::Proxy::clone(&display).attach(event_queue.token()),
-            &mut event_queue,
-            WaylandEnv::default(),
-        )
-        .expect("Failed to create Wayland environment");
-
-        Self { event_queue, env }
-    }
-
-    fn grab_screen(&mut self, output_id: u32) -> WlBuffer {
-        let screencopy = self.env.require_global::<ZwlrScreencopyManagerV1>();
-        let output = self
-            .env
-            .get_all_globals::<WlOutput>()
-            .into_iter()
-            .find(|o| sctk::output::with_output_info(o, |info| info.id) == Some(output_id))
-            .expect("Failed to find Wayland output for monitor");
-
-        let shm = self.env.require_global::<WlShm>();
-        let mempool = sctk::shm::MemPool::new(shm, |_| {}).unwrap();
-
-        screencopy
-            .capture_output(0, &*output)
-            .quick_assign(move |frame, event, mut data| match event {
-                zwlr_screencopy_frame_v1::Event::Buffer {
-                    format,
-                    width,
-                    height,
-                    stride,
-                } => {
-                    debug!(
-                        "Creating {:?} buffer with dimensions {}x{}",
-                        format, width, height
-                    );
-                    let buffer = data.get::<Option<WlBuffer>>().unwrap();
-                    *buffer =
-                        Some(mempool.buffer(0, width as i32, height as i32, stride as i32, format));
-                    frame.copy(buffer.as_ref().unwrap());
-                }
-                _ => {}
-            });
-
-        let mut buffer: Option<WlBuffer> = None;
-        self.event_queue
-            .sync_roundtrip(&mut buffer, |_, _, _| unreachable!())
-            .unwrap();
-
-        buffer.unwrap()
-    }
 }
 
 pub struct Manager {

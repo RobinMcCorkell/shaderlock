@@ -2,6 +2,7 @@
 
 mod graphics;
 mod monitor;
+mod screengrab;
 
 use log::{debug, error, info, warn};
 
