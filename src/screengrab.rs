@@ -38,14 +38,58 @@ sctk::environment!(
     ],
 );
 
-pub struct BufferInfo {
+#[derive(Debug)]
+struct BufferInfo {
     width: u32,
     height: u32,
     stride: u32,
     format: sctk::shm::Format,
 }
 
-pub struct ScreengrabBuffer(sctk::shm::MemPool, Option<BufferInfo>);
+pub struct Buffer {
+    buffer: wl::protocol::wl_buffer::WlBuffer,
+    pool: sctk::shm::MemPool,
+    info: BufferInfo,
+}
+
+impl Buffer {
+    pub fn as_rgba(&mut self) -> &[u8] {
+        use sctk::shm::Format::*;
+        if self.info.format != Rgba8888 {
+            info!("Format is {:?}, converting", self.info.format);
+            let shufb = match self.info.format {
+                Argb8888 => &[2, 1, 0, 3],
+                _ => panic!("Unsupported format"),
+            };
+            for chunk in self.pool.mmap().chunks_exact_mut(4) {
+                let new_chunk = [
+                    chunk[shufb[0]],
+                    chunk[shufb[1]],
+                    chunk[shufb[2]],
+                    chunk[shufb[3]],
+                ];
+                for i in 0..3 {
+                    chunk[i] = new_chunk[i];
+                }
+            }
+            self.info.format = Rgba8888;
+        }
+        debug!("Buffer size = {}", self.pool.mmap().len());
+        self.pool.mmap()
+    }
+
+    pub fn width(&self) -> u32 {
+        self.info.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.info.height
+    }
+
+    pub fn stride(&self) -> u32 {
+        self.info.stride
+    }
+}
 
 pub struct Screengrabber {
     event_queue: wl::EventQueue,
@@ -67,7 +111,7 @@ impl Screengrabber {
         Self { event_queue, env }
     }
 
-    pub fn grab_screen(&mut self, output_id: u32) -> ScreengrabBuffer {
+    pub fn grab_screen(&mut self, output_id: u32) -> Buffer {
         let screencopy = self.env.require_global::<ZwlrScreencopyManagerV1>();
         let output = self
             .env
@@ -76,6 +120,11 @@ impl Screengrabber {
             .find(|o| sctk::output::with_output_info(o, |info| info.id) == Some(output_id))
             .expect("Failed to find Wayland output for monitor");
 
+        struct PartialBuffer {
+            buffer: Option<wl::protocol::wl_buffer::WlBuffer>,
+            pool: sctk::shm::MemPool,
+            info: Option<BufferInfo>,
+        };
         screencopy
             .capture_output(0, &*output)
             .quick_assign(|frame, event, mut data| match event {
@@ -89,29 +138,43 @@ impl Screengrabber {
                         "Creating {:?} buffer with dimensions {}x{}",
                         format, width, height
                     );
-                    let ScreengrabBuffer(ref mempool, ref mut bi) =
-                        data.get::<ScreengrabBuffer>().unwrap();
-                    *bi = Some(BufferInfo {
+                    let b = data.get::<PartialBuffer>().unwrap();
+                    b.info = Some(BufferInfo {
                         width,
                         height,
                         stride,
                         format,
                     });
-                    let buf = mempool.buffer(0, width as i32, height as i32, stride as i32, format);
+                    b.pool.resize((height * stride) as usize).unwrap();
+                    let buf = b
+                        .pool
+                        .buffer(0, width as i32, height as i32, stride as i32, format);
                     frame.copy(&buf);
+                    b.buffer = Some(buf);
                 }
                 _ => {}
             });
 
         let shm = self.env.require_global::<WlShm>();
         let mempool = sctk::shm::MemPool::new(shm, |_| {}).unwrap();
-        let bi: Option<BufferInfo> = None;
-        let mut context = ScreengrabBuffer(mempool, bi);
+        let mut context = PartialBuffer {
+            buffer: None,
+            pool: mempool,
+            info: None,
+        };
 
         self.event_queue
             .sync_roundtrip(&mut context, |_, _, _| unreachable!())
             .unwrap();
+        self.event_queue
+            .sync_roundtrip(&mut context, |_, _, _| unreachable!())
+            .unwrap();
 
-        context
+        debug!("Took screenshot with info {:?}", context.info,);
+        Buffer {
+            buffer: context.buffer.unwrap(),
+            pool: context.pool,
+            info: context.info.unwrap(),
+        }
     }
 }

@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use vk_shader_macros::include_glsl;
+use wgpu::util::DeviceExt;
 
 const VS: wgpu::ShaderModuleSource =
     wgpu::ShaderModuleSource::SpirV(Cow::Borrowed(include_glsl!("shaders/shader.vert")));
@@ -8,6 +9,14 @@ const VS_MAIN: &str = "main";
 const FS: wgpu::ShaderModuleSource =
     wgpu::ShaderModuleSource::SpirV(Cow::Borrowed(include_glsl!("shaders/shader.frag")));
 const FS_MAIN: &str = "main";
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+struct Uniforms {
+    resolution: cgmath::Vector2<f32>,
+}
+unsafe impl bytemuck::Pod for Uniforms {}
+unsafe impl bytemuck::Zeroable for Uniforms {}
 
 pub struct State {
     surface: wgpu::Surface,
@@ -17,10 +26,20 @@ pub struct State {
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
+
+    texture: wgpu::Texture,
+    texture_view: wgpu::TextureView,
+    sampler: wgpu::Sampler,
+    uniforms: Uniforms,
+    uniforms_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
 }
 
 impl State {
-    pub async fn new(window: &winit::window::Window) -> Self {
+    pub async fn new(
+        window: &winit::window::Window,
+        mut screenshot: crate::screengrab::Buffer,
+    ) -> Self {
         let size = window.inner_size();
 
         // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
@@ -55,10 +74,41 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::SampledTexture {
+                        multisampled: false,
+                        dimension: wgpu::TextureViewDimension::D2,
+                        component_type: wgpu::TextureComponentType::Uint,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler { comparison: false },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+            label: Some("bind_group_layout"),
+        });
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render pipeline layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -95,6 +145,78 @@ impl State {
             alpha_to_coverage_enabled: false,
         });
 
+        let texture_size = wgpu::Extent3d {
+            width: screenshot.width(),
+            height: screenshot.height(),
+            depth: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Screenshot"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+        });
+
+        let stride = screenshot.stride();
+        let height = screenshot.height();
+        queue.write_texture(
+            wgpu::TextureCopyView {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            screenshot.as_rgba(),
+            wgpu::TextureDataLayout {
+                offset: 0,
+                bytes_per_row: stride,
+                rows_per_image: height,
+            },
+            texture_size,
+        );
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let uniforms = Uniforms {
+            resolution: cgmath::Vector2::new(size.width as f32, size.height as f32),
+        };
+
+        let uniforms_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Uniforms Buffer"),
+            contents: bytemuck::cast_slice(&[uniforms]),
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer(uniforms_buffer.slice(..)),
+                },
+            ],
+            label: Some("bind_group"),
+        });
+
         Self {
             surface,
             device,
@@ -103,6 +225,13 @@ impl State {
             swap_chain,
             size,
             render_pipeline,
+
+            texture,
+            texture_view,
+            sampler,
+            uniforms,
+            uniforms_buffer,
+            bind_group,
         }
     }
 
@@ -111,6 +240,14 @@ impl State {
         self.sc_desc.width = new_size.width;
         self.sc_desc.height = new_size.height;
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
+
+        self.uniforms.resolution =
+            cgmath::Vector2::new(new_size.width as f32, new_size.height as f32);
+        self.queue.write_buffer(
+            &self.uniforms_buffer,
+            0,
+            bytemuck::cast_slice(&[self.uniforms]),
+        );
     }
 
     pub fn render(&mut self) {
@@ -143,6 +280,7 @@ impl State {
             depth_stencil_attachment: None,
         });
         render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_bind_group(0, &self.bind_group, &[]); // NEW!
         render_pass.draw(0..4, 0..1);
         drop(render_pass);
 

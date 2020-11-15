@@ -37,7 +37,7 @@ impl Manager {
             .with_fullscreen(Some(Fullscreen::Borderless(Some(handle))))
             .build(event_loop)
             .unwrap();
-        let graphics = crate::graphics::State::new(&window).await;
+        let graphics = crate::graphics::State::new(&window, frame).await;
         self.state.insert(window.id(), State { window, graphics });
     }
 

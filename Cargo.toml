@@ -13,3 +13,5 @@ wgpu = "0.6.0"
 futures = "0.3.8"
 vk-shader-macros = "0.2.6"
 sctk = {package = "smithay-client-toolkit", version = "0.12.0"}
+cgmath = "0.17.0"
+bytemuck = "1.4.1"
