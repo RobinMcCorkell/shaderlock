@@ -113,8 +113,6 @@ impl State {
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
     }
 
-    pub fn update(&mut self) {}
-
     pub fn render(&mut self) {
         let frame = self
             .swap_chain
