@@ -1,6 +1,7 @@
 #![feature(async_closure)]
 mod graphics;
 
+use futures::prelude::*;
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
 
@@ -14,9 +15,8 @@ async fn main() {
     env_logger::init();
 
     let event_loop = winit::event_loop::EventLoop::new();
-    use futures::stream::StreamExt;
     let p_event_loop = &event_loop;
-    let mut state: HashMap<_, _> = futures::stream::iter(event_loop.available_monitors())
+    let mut state: HashMap<_, _> = stream::iter(event_loop.available_monitors())
         .then(async move |handle| {
             use winit::window::*;
             debug!("Creating window on {}", handle.name().unwrap());
