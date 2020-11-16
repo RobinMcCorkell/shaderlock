@@ -50,6 +50,7 @@ pub struct Buffer {
     buffer: wl::protocol::wl_buffer::WlBuffer,
     pool: sctk::shm::MemPool,
     info: BufferInfo,
+    transform: sctk::output::Transform,
 }
 
 impl Buffer {
@@ -88,6 +89,25 @@ impl Buffer {
 
     pub fn stride(&self) -> u32 {
         self.info.stride
+    }
+
+    pub fn transform_matrix(&self) -> cgmath::Matrix4<f32> {
+        use cgmath::{Angle, Matrix4, Rad};
+        use sctk::output::Transform::*;
+        let angle = Rad::turn_div_4()
+            * match self.transform {
+                Normal | Flipped => 0.0,
+                _90 | Flipped90 => 1.0,
+                _180 | Flipped180 => 2.0,
+                _270 | Flipped270 => 3.0,
+                _ => panic!("Unsupported transform"),
+            };
+        let flip = match self.transform {
+            Flipped | Flipped90 | Flipped180 | Flipped270 => true,
+            _ => false,
+        };
+        Matrix4::from_angle_z(angle)
+            * Matrix4::from_nonuniform_scale(if flip { -1.0 } else { 1.0 }, 1.0, 1.0)
     }
 }
 
@@ -170,11 +190,15 @@ impl Screengrabber {
             .sync_roundtrip(&mut context, |_, _, _| unreachable!())
             .unwrap();
 
+        let transform = sctk::output::with_output_info(&output, |oi| oi.transform)
+            .unwrap_or(sctk::output::Transform::Normal);
+
         debug!("Took screenshot with info {:?}", context.info,);
         Buffer {
             buffer: context.buffer.unwrap(),
             pool: context.pool,
             info: context.info.unwrap(),
+            transform,
         }
     }
 }

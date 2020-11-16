@@ -13,7 +13,7 @@ const FS_MAIN: &str = "main";
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct Uniforms {
-    resolution: cgmath::Vector2<f32>,
+    transform: cgmath::Matrix4<f32>,
 }
 unsafe impl bytemuck::Pod for Uniforms {}
 unsafe impl bytemuck::Zeroable for Uniforms {}
@@ -41,6 +41,8 @@ pub struct State {
     uniforms: Uniforms,
     uniforms_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+
+    texture_transform: cgmath::Matrix4<f32>,
 }
 
 impl State {
@@ -202,8 +204,19 @@ impl State {
             ..Default::default()
         });
 
+        use cgmath::SquareMatrix;
+        let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
+            1.0 / size.width as f32,
+            1.0 / size.height as f32,
+            1.0,
+        );
+        let texture_transform =
+            cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.5, 0.5, 0.0))
+                * screenshot.transform_matrix()
+                * cgmath::Matrix4::from_nonuniform_scale(1.0, -1.0, 1.0)
+                * cgmath::Matrix4::from_translation(cgmath::Vector3::new(-0.5, -0.5, 0.0));
         let uniforms = Uniforms {
-            resolution: cgmath::Vector2::new(size.width as f32, size.height as f32),
+            transform: texture_transform * resolution_transform,
         };
 
         let uniforms_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -246,6 +259,8 @@ impl State {
             uniforms,
             uniforms_buffer,
             bind_group,
+
+            texture_transform,
         }
     }
 
@@ -255,8 +270,12 @@ impl State {
         self.sc_desc.height = new_size.height;
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
 
-        self.uniforms.resolution =
-            cgmath::Vector2::new(new_size.width as f32, new_size.height as f32);
+        let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
+            1.0 / new_size.width as f32,
+            1.0 / new_size.height as f32,
+            1.0,
+        );
+        self.uniforms.transform = self.texture_transform * resolution_transform;
         self.queue.write_buffer(
             &self.uniforms_buffer,
             0,
