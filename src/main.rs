@@ -10,8 +10,12 @@ use log::{debug, error, info, warn};
 async fn main() {
     env_logger::init();
 
+    let shader_filename = "shaders/vertical_band_slide.frag";
+    let shader_source = std::fs::read_to_string(shader_filename).expect("Failed to read shader");
+    let graphics_manager = graphics::Manager::new(&shader_source);
+
     let event_loop = winit::event_loop::EventLoop::new();
-    let mut monitor_manager = monitor::Manager::new();
+    let mut monitor_manager = monitor::Manager::new(graphics_manager);
     for handle in event_loop.available_monitors() {
         monitor_manager.add_monitor(&event_loop, handle).await;
     }

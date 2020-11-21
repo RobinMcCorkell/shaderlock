@@ -13,14 +13,16 @@ pub struct State {
 
 pub struct Manager {
     screengrabber: Screengrabber,
+    graphics: crate::graphics::Manager,
     state: HashMap<WindowId, State>,
     init_time: std::time::Instant,
 }
 
 impl Manager {
-    pub fn new() -> Self {
+    pub fn new(graphics: crate::graphics::Manager) -> Self {
         Self {
             screengrabber: Screengrabber::new(),
+            graphics: graphics,
             state: HashMap::new(),
             init_time: std::time::Instant::now(),
         }
@@ -39,7 +41,7 @@ impl Manager {
             .with_fullscreen(Some(Fullscreen::Borderless(Some(handle))))
             .build(event_loop)
             .unwrap();
-        let graphics = crate::graphics::State::new(&window, frame).await;
+        let graphics = self.graphics.init_window(&window, frame).await;
         self.state.insert(window.id(), State { window, graphics });
     }
 

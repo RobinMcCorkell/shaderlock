@@ -1,13 +1,8 @@
 use std::borrow::Cow;
 
-use vk_shader_macros::include_glsl;
 use wgpu::util::DeviceExt;
 
-const VS: wgpu::ShaderModuleSource =
-    wgpu::ShaderModuleSource::SpirV(Cow::Borrowed(include_glsl!("shaders/shader.vert")));
 const VS_MAIN: &str = "main";
-const FS: wgpu::ShaderModuleSource =
-    wgpu::ShaderModuleSource::SpirV(Cow::Borrowed(include_glsl!("shaders/shader.frag")));
 const FS_MAIN: &str = "main";
 
 #[repr(C)]
@@ -26,36 +21,43 @@ struct FrameUniforms {
 unsafe impl bytemuck::Pod for FrameUniforms {}
 unsafe impl bytemuck::Zeroable for FrameUniforms {}
 
-pub struct State {
-    surface: wgpu::Surface,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    sc_desc: wgpu::SwapChainDescriptor,
-    swap_chain: wgpu::SwapChain,
-    size: winit::dpi::PhysicalSize<u32>,
-    render_pipeline: wgpu::RenderPipeline,
-
-    texture: wgpu::Texture,
-    texture_view: wgpu::TextureView,
-    sampler: wgpu::Sampler,
-    uniforms: Uniforms,
-    uniforms_buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-
-    texture_transform: cgmath::Matrix4<f32>,
+pub struct Manager {
+    instance: wgpu::Instance,
+    shader: wgpu::ShaderModuleSource<'static>,
 }
 
-impl State {
-    pub async fn new(
+impl Manager {
+    pub fn new(shader_source: &str) -> Self {
+        let mut compiler = shaderc::Compiler::new().unwrap();
+        let spirv = compiler
+            .compile_into_spirv(
+                shader_source,
+                shaderc::ShaderKind::Fragment,
+                "fragment shader",
+                FS_MAIN,
+                None,
+            )
+            .unwrap();
+
+        let data = Vec::from(spirv.as_binary());
+        let shader = wgpu::ShaderModuleSource::SpirV(data.into());
+
+        Manager {
+            instance: wgpu::Instance::new(wgpu::BackendBit::PRIMARY),
+            shader: shader,
+        }
+    }
+
+    pub async fn init_window(
+        &self,
         window: &winit::window::Window,
         mut screenshot: crate::screengrab::Buffer,
-    ) -> Self {
+    ) -> State {
         let size = window.inner_size();
 
-        // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
-        let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
-        let surface = unsafe { instance.create_surface(window) };
-        let adapter = instance
+        let surface = unsafe { self.instance.create_surface(window) };
+        let adapter = self
+            .instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::Default,
                 compatible_surface: Some(&surface),
@@ -128,15 +130,25 @@ impl State {
                 }],
             });
 
+        use std::borrow::Borrow;
+        let shader = match self.shader {
+            wgpu::ShaderModuleSource::SpirV(ref s) => {
+                wgpu::ShaderModuleSource::SpirV(Cow::Borrowed(s.borrow()))
+            }
+            wgpu::ShaderModuleSource::Wgsl(ref s) => {
+                wgpu::ShaderModuleSource::Wgsl(Cow::Borrowed(s.borrow()))
+            }
+        };
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex_stage: wgpu::ProgrammableStageDescriptor {
-                module: &device.create_shader_module(VS),
+                module: &device.create_shader_module(wgpu::include_spirv!("../shader.vert.spv")),
                 entry_point: VS_MAIN,
             },
             fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                module: &device.create_shader_module(FS),
+                module: &device.create_shader_module(shader),
                 entry_point: FS_MAIN,
             }),
             rasterization_state: Some(wgpu::RasterizationStateDescriptor {
@@ -204,7 +216,6 @@ impl State {
             ..Default::default()
         });
 
-        use cgmath::SquareMatrix;
         let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
             1.0 / size.width as f32,
             1.0 / size.height as f32,
@@ -244,7 +255,7 @@ impl State {
             label: Some("bind_group"),
         });
 
-        Self {
+        State {
             surface,
             device,
             queue,
@@ -263,7 +274,28 @@ impl State {
             texture_transform,
         }
     }
+}
 
+pub struct State {
+    surface: wgpu::Surface,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    sc_desc: wgpu::SwapChainDescriptor,
+    swap_chain: wgpu::SwapChain,
+    size: winit::dpi::PhysicalSize<u32>,
+    render_pipeline: wgpu::RenderPipeline,
+
+    texture: wgpu::Texture,
+    texture_view: wgpu::TextureView,
+    sampler: wgpu::Sampler,
+    uniforms: Uniforms,
+    uniforms_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+
+    texture_transform: cgmath::Matrix4<f32>,
+}
+
+impl State {
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.size = new_size;
         self.sc_desc.width = new_size.width;
