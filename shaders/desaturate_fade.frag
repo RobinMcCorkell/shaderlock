@@ -22,7 +22,7 @@ const float FADE_ACCEL = 1.0;
 
 vec4 desaturate(vec4 color, float desaturation) {
     vec3 gray = vec3(dot(LUMIN, vec3(color)));
-    return vec4(mix(color, gray, desaturation), 1.0);
+    return vec4(mix(vec3(color), gray, desaturation), 1.0);
 }
 
 
@@ -33,6 +33,6 @@ void main() {
     vec4 ouv = iTransform * vec4(gl_FragCoord.xy, 0.0, 1.0);
     vec2 uv = ouv.xy / ouv.w;
 
-    vec4 desaturated = desaturate(texture(sampler2D(t_screenshot, s_screenshot), uv).rgb, desaturation);
+    vec4 desaturated = desaturate(texture(sampler2D(t_screenshot, s_screenshot), uv), desaturation);
     f_color = mix(desaturated, CLEAR_COLOR, fade);
 }

@@ -16,7 +16,7 @@ const vec4 CLEAR_COLOR = vec4(0.0, 0.0, 0.0, 1.0);
 
 const int BAND_SIZE = 64;
 const int BORDER = 1;
-const float SPEED = 0.5;
+const float SPEED = 0.8;
 const float ACCEL = 5.0;
 
 void main() {

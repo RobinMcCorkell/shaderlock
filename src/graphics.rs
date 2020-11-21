@@ -27,13 +27,14 @@ pub struct Manager {
 }
 
 impl Manager {
-    pub fn new(shader_source: &str) -> Self {
+    pub fn new(shader_file: std::path::PathBuf) -> Self {
+        let shader_source = std::fs::read_to_string(&shader_file).expect("Failed to read shader");
         let mut compiler = shaderc::Compiler::new().unwrap();
         let spirv = compiler
             .compile_into_spirv(
-                shader_source,
+                &shader_source,
                 shaderc::ShaderKind::Fragment,
-                "fragment shader",
+                shader_file.to_str().unwrap(),
                 FS_MAIN,
                 None,
             )

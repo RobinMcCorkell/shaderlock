@@ -6,13 +6,21 @@ mod screengrab;
 
 use log::{debug, error, info, warn};
 
+fn get_shader_file() -> std::path::PathBuf {
+    use rand::seq::IteratorRandom;
+    let mut rng = rand::thread_rng();
+    glob::glob("shaders/*.frag")
+        .unwrap()
+        .choose(&mut rng)
+        .expect("Failed to select a shader file")
+        .expect("Failed to get a path to the shader")
+}
+
 #[async_std::main]
 async fn main() {
     env_logger::init();
 
-    let shader_filename = "shaders/vertical_band_slide.frag";
-    let shader_source = std::fs::read_to_string(shader_filename).expect("Failed to read shader");
-    let graphics_manager = graphics::Manager::new(&shader_source);
+    let graphics_manager = graphics::Manager::new(get_shader_file());
 
     let event_loop = winit::event_loop::EventLoop::new();
     let mut monitor_manager = monitor::Manager::new(graphics_manager);
