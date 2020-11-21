@@ -47,33 +47,16 @@ struct BufferInfo {
 }
 
 pub struct Buffer {
-    buffer: wl::protocol::wl_buffer::WlBuffer,
     pool: sctk::shm::MemPool,
     info: BufferInfo,
     transform: sctk::output::Transform,
 }
 
 impl Buffer {
-    pub fn as_rgba(&mut self) -> &[u8] {
+    pub fn as_bgra(&mut self) -> &[u8] {
         use sctk::shm::Format::*;
-        if self.info.format != Rgba8888 {
-            info!("Format is {:?}, converting", self.info.format);
-            let shufb = match self.info.format {
-                Argb8888 => &[2, 1, 0, 3],
-                _ => panic!("Unsupported format"),
-            };
-            for chunk in self.pool.mmap().chunks_exact_mut(4) {
-                let new_chunk = [
-                    chunk[shufb[0]],
-                    chunk[shufb[1]],
-                    chunk[shufb[2]],
-                    chunk[shufb[3]],
-                ];
-                for i in 0..3 {
-                    chunk[i] = new_chunk[i];
-                }
-            }
-            self.info.format = Rgba8888;
+        if self.info.format != Argb8888 {
+            panic!("Unsupported format: {:?}", self.info.format);
         }
         debug!("Buffer size = {}", self.pool.mmap().len());
         self.pool.mmap()
@@ -195,7 +178,6 @@ impl Screengrabber {
 
         debug!("Took screenshot with info {:?}", context.info,);
         Buffer {
-            buffer: context.buffer.unwrap(),
             pool: context.pool,
             info: context.info.unwrap(),
             transform,

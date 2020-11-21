@@ -34,7 +34,7 @@ impl Manager {
             .compile_into_spirv(
                 &shader_source,
                 shaderc::ShaderKind::Fragment,
-                shader_file.to_str().unwrap(),
+                &shader_file.to_string_lossy(),
                 FS_MAIN,
                 None,
             )
@@ -45,7 +45,7 @@ impl Manager {
 
         Manager {
             instance: wgpu::Instance::new(wgpu::BackendBit::PRIMARY),
-            shader: shader,
+            shader,
         }
     }
 
@@ -185,7 +185,7 @@ impl Manager {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
@@ -197,7 +197,7 @@ impl Manager {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            screenshot.as_rgba(),
+            screenshot.as_bgra(),
             wgpu::TextureDataLayout {
                 offset: 0,
                 bytes_per_row: stride,
@@ -265,9 +265,6 @@ impl Manager {
             size,
             render_pipeline,
 
-            texture,
-            texture_view,
-            sampler,
             uniforms,
             uniforms_buffer,
             bind_group,
@@ -286,9 +283,6 @@ pub struct State {
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
 
-    texture: wgpu::Texture,
-    texture_view: wgpu::TextureView,
-    sampler: wgpu::Sampler,
     uniforms: Uniforms,
     uniforms_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,

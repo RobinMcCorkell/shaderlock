@@ -9,11 +9,14 @@ use log::{debug, error, info, warn};
 fn get_shader_file() -> std::path::PathBuf {
     use rand::seq::IteratorRandom;
     let mut rng = rand::thread_rng();
-    glob::glob("shaders/*.frag")
+    let file = glob::glob("shaders/*.frag")
         .unwrap()
         .choose(&mut rng)
         .expect("Failed to select a shader file")
-        .expect("Failed to get a path to the shader")
+        .expect("Failed to get a path to the shader");
+
+    info!("Chosen shader {}", file.to_string_lossy());
+    file
 }
 
 #[async_std::main]
