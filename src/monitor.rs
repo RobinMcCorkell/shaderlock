@@ -1,4 +1,7 @@
+use anyhow::*;
+#[allow(unused_imports)]
 use log::{debug, error, info, warn};
+
 use std::collections::HashMap;
 use winit::event_loop::EventLoop;
 use winit::monitor::*;
@@ -19,10 +22,10 @@ pub struct Manager {
 }
 
 impl Manager {
-    pub fn new(graphics: crate::graphics::Manager) -> Self {
+    pub fn new(screengrabber: Screengrabber, graphics: crate::graphics::Manager) -> Self {
         Self {
-            screengrabber: Screengrabber::new(),
-            graphics: graphics,
+            screengrabber,
+            graphics,
             state: HashMap::new(),
             init_time: std::time::Instant::now(),
         }
@@ -32,17 +35,26 @@ impl Manager {
         &mut self,
         event_loop: &EventLoop<EventT>,
         handle: MonitorHandle,
-    ) {
+    ) -> Result<()> {
         use winit::platform::unix::MonitorHandleExtUnix;
-        let frame = self.screengrabber.grab_screen(handle.native_id());
+        let frame = self
+            .screengrabber
+            .grab_screen(handle.native_id())
+            .context("Failed to grab screen")?;
 
-        debug!("Creating window on {}", handle.name().unwrap());
+        debug!("Creating window on {:?}", handle.name());
         let window = WindowBuilder::new()
             .with_fullscreen(Some(Fullscreen::Borderless(Some(handle))))
             .build(event_loop)
-            .unwrap();
-        let graphics = self.graphics.init_window(&window, frame).await;
+            .context("Failed to build window")?;
+        let graphics = self
+            .graphics
+            .init_window(&window, frame)
+            .await
+            .context("Failed to create graphics context")?;
         self.state.insert(window.id(), State { window, graphics });
+
+        Ok(())
     }
 
     pub fn handle_event<EventT>(&mut self, event: winit::event::Event<EventT>) {
@@ -55,13 +67,19 @@ impl Manager {
                 WindowEvent::Resized(physical_size) => {
                     let State {
                         ref mut graphics, ..
-                    } = self.state.get_mut(&window_id).unwrap();
+                    } = self
+                        .state
+                        .get_mut(&window_id)
+                        .expect("Missing window ID in state");
                     graphics.resize(*physical_size);
                 }
                 WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                     let State {
                         ref mut graphics, ..
-                    } = self.state.get_mut(&window_id).unwrap();
+                    } = self
+                        .state
+                        .get_mut(&window_id)
+                        .expect("Missing window ID in state");
                     // new_inner_size is &&mut so we have to dereference it twice
                     graphics.resize(**new_inner_size);
                 }
@@ -70,7 +88,10 @@ impl Manager {
             Event::RedrawRequested(window_id) if self.state.contains_key(&window_id) => {
                 let State {
                     ref mut graphics, ..
-                } = self.state.get_mut(&window_id).unwrap();
+                } = self
+                    .state
+                    .get_mut(&window_id)
+                    .expect("Missing window ID in state");
                 let time = self.init_time.elapsed().as_secs_f32();
                 graphics.render(time);
             }

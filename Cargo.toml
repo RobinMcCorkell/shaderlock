@@ -17,6 +17,7 @@ bytemuck = "1.4.1"
 shaderc = "0.7.0"
 glob = "0.3.0"
 rand = "0.7.3"
+anyhow = "1.0.34"
 
 [build-dependencies]
 shaderc = "0.7.0"

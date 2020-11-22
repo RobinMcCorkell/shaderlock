@@ -1,3 +1,5 @@
+use anyhow::*;
+#[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
 use sctk::output::OutputHandler;
@@ -7,7 +9,6 @@ use sctk::reexports::{
     protocols::wlr::unstable::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1,
 };
 use sctk::shm::ShmHandler;
-use wl::protocol::wl_buffer::WlBuffer;
 use wl::protocol::wl_output::WlOutput;
 use wl::protocol::wl_shm::WlShm;
 
@@ -100,8 +101,8 @@ pub struct Screengrabber {
 }
 
 impl Screengrabber {
-    pub fn new() -> Self {
-        let display = wl::Display::connect_to_env().expect("Failed to connect to Wayland");
+    pub fn new() -> Result<Self> {
+        let display = wl::Display::connect_to_env().context("Failed to connect to Wayland")?;
         let mut event_queue = display.create_event_queue();
 
         let env = sctk::environment::Environment::new(
@@ -109,19 +110,19 @@ impl Screengrabber {
             &mut event_queue,
             WaylandEnv::default(),
         )
-        .expect("Failed to create Wayland environment");
+        .context("Failed to create Wayland environment")?;
 
-        Self { event_queue, env }
+        Ok(Self { event_queue, env })
     }
 
-    pub fn grab_screen(&mut self, output_id: u32) -> Buffer {
+    pub fn grab_screen(&mut self, output_id: u32) -> Result<Buffer> {
         let screencopy = self.env.require_global::<ZwlrScreencopyManagerV1>();
         let output = self
             .env
             .get_all_globals::<WlOutput>()
             .into_iter()
             .find(|o| sctk::output::with_output_info(o, |info| info.id) == Some(output_id))
-            .expect("Failed to find Wayland output for monitor");
+            .context("Failed to find Wayland output for monitor")?;
 
         struct PartialBuffer {
             buffer: Option<wl::protocol::wl_buffer::WlBuffer>,
@@ -141,14 +142,18 @@ impl Screengrabber {
                         "Creating {:?} buffer with dimensions {}x{}",
                         format, width, height
                     );
-                    let b = data.get::<PartialBuffer>().unwrap();
+                    let b = data
+                        .get::<PartialBuffer>()
+                        .expect("Screencopy data should be a PartialBuffer");
                     b.info = Some(BufferInfo {
                         width,
                         height,
                         stride,
                         format,
                     });
-                    b.pool.resize((height * stride) as usize).unwrap();
+                    b.pool
+                        .resize((height * stride) as usize)
+                        .expect("Failed to resize buffer");
                     let buf = b
                         .pool
                         .buffer(0, width as i32, height as i32, stride as i32, format);
@@ -159,7 +164,7 @@ impl Screengrabber {
             });
 
         let shm = self.env.require_global::<WlShm>();
-        let mempool = sctk::shm::MemPool::new(shm, |_| {}).unwrap();
+        let mempool = sctk::shm::MemPool::new(shm, |_| {}).context("Failed to create mempool")?;
         let mut context = PartialBuffer {
             buffer: None,
             pool: mempool,
@@ -168,19 +173,20 @@ impl Screengrabber {
 
         self.event_queue
             .sync_roundtrip(&mut context, |_, _, _| unreachable!())
-            .unwrap();
+            .context("Failed to tx/rx with Wayland")?;
         self.event_queue
             .sync_roundtrip(&mut context, |_, _, _| unreachable!())
-            .unwrap();
+            .context("Failed to tx/rx with Wayland")?;
 
         let transform = sctk::output::with_output_info(&output, |oi| oi.transform)
-            .unwrap_or(sctk::output::Transform::Normal);
+            .context("Failed to get window transform state")?;
 
-        debug!("Took screenshot with info {:?}", context.info,);
-        Buffer {
+        let info = context.info.context("Failed to create a buffer")?;
+        debug!("Took screenshot with info {:?}", info);
+        Ok(Buffer {
             pool: context.pool,
-            info: context.info.unwrap(),
+            info,
             transform,
-        }
+        })
     }
 }

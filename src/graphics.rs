@@ -1,3 +1,7 @@
+use anyhow::*;
+#[allow(unused_imports)]
+use log::{debug, error, info, warn};
+
 use std::borrow::Cow;
 
 use wgpu::util::DeviceExt;
@@ -27,9 +31,10 @@ pub struct Manager {
 }
 
 impl Manager {
-    pub fn new(shader_file: std::path::PathBuf) -> Self {
-        let shader_source = std::fs::read_to_string(&shader_file).expect("Failed to read shader");
-        let mut compiler = shaderc::Compiler::new().unwrap();
+    pub fn new(shader_file: std::path::PathBuf) -> Result<Self> {
+        let shader_source =
+            std::fs::read_to_string(&shader_file).context("Failed to read shader")?;
+        let mut compiler = shaderc::Compiler::new().context("Failed to create shader compiler")?;
         let spirv = compiler
             .compile_into_spirv(
                 &shader_source,
@@ -38,22 +43,22 @@ impl Manager {
                 FS_MAIN,
                 None,
             )
-            .unwrap();
+            .context("Failed to compile shader")?;
 
         let data = Vec::from(spirv.as_binary());
         let shader = wgpu::ShaderModuleSource::SpirV(data.into());
 
-        Manager {
+        Ok(Manager {
             instance: wgpu::Instance::new(wgpu::BackendBit::PRIMARY),
             shader,
-        }
+        })
     }
 
     pub async fn init_window(
         &self,
         window: &winit::window::Window,
         mut screenshot: crate::screengrab::Buffer,
-    ) -> State {
+    ) -> Result<State> {
         let size = window.inner_size();
 
         let surface = unsafe { self.instance.create_surface(window) };
@@ -64,7 +69,7 @@ impl Manager {
                 compatible_surface: Some(&surface),
             })
             .await
-            .unwrap();
+            .context("Failed to get graphics adapter")?;
 
         let (device, queue) = adapter
             .request_device(
@@ -79,7 +84,7 @@ impl Manager {
                 None, // Trace path
             )
             .await
-            .unwrap();
+            .context("Failed to get device")?;
 
         let sc_desc = wgpu::SwapChainDescriptor {
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
@@ -256,7 +261,7 @@ impl Manager {
             label: Some("bind_group"),
         });
 
-        State {
+        Ok(State {
             surface,
             device,
             queue,
@@ -270,7 +275,7 @@ impl Manager {
             bind_group,
 
             texture_transform,
-        }
+        })
     }
 }
 

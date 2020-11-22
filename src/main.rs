@@ -4,31 +4,40 @@ mod graphics;
 mod monitor;
 mod screengrab;
 
+use anyhow::*;
+#[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
-fn get_shader_file() -> std::path::PathBuf {
+fn get_shader_file() -> Result<std::path::PathBuf> {
     use rand::seq::IteratorRandom;
     let mut rng = rand::thread_rng();
     let file = glob::glob("shaders/*.frag")
-        .unwrap()
+        .expect("Failed to parse shader file glob")
         .choose(&mut rng)
-        .expect("Failed to select a shader file")
-        .expect("Failed to get a path to the shader");
+        .context("Failed to randomly pick a shader file")?
+        .context("Failed to get the path to the shader")?;
 
     info!("Chosen shader {}", file.to_string_lossy());
-    file
+    Ok(file)
 }
 
 #[async_std::main]
-async fn main() {
+async fn main() -> Result<()> {
     env_logger::init();
 
-    let graphics_manager = graphics::Manager::new(get_shader_file());
+    let graphics_manager =
+        graphics::Manager::new(get_shader_file()?).context("Failed to create graphics manager")?;
+
+    let screengrabber =
+        screengrab::Screengrabber::new().context("Failed to create screengrabber")?;
 
     let event_loop = winit::event_loop::EventLoop::new();
-    let mut monitor_manager = monitor::Manager::new(graphics_manager);
+    let mut monitor_manager = monitor::Manager::new(screengrabber, graphics_manager);
     for handle in event_loop.available_monitors() {
-        monitor_manager.add_monitor(&event_loop, handle).await;
+        monitor_manager
+            .add_monitor(&event_loop, handle)
+            .await
+            .context("Failed to add monitor")?;
     }
 
     use winit::event::*;
