@@ -4,6 +4,7 @@
 
 mod callback_utils;
 mod graphics;
+mod locker;
 mod monitor;
 mod screengrab;
 
@@ -34,6 +35,8 @@ async fn main() -> Result<()> {
     let screengrabber =
         screengrab::Screengrabber::new().context("Failed to create screengrabber")?;
 
+    let mut locker = locker::Locker::new().context("Failed to create locker")?;
+
     let event_loop = winit::event_loop::EventLoop::new();
     let mut monitor_manager = monitor::Manager::new(screengrabber, graphics_manager);
     for handle in event_loop.available_monitors() {
@@ -43,29 +46,31 @@ async fn main() -> Result<()> {
             .context("Failed to add monitor")?;
     }
 
-    use winit::event::*;
-    use winit::event_loop::ControlFlow;
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            Event::WindowEvent { ref event, .. } => match event {
-                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::KeyboardInput { input, .. } => match input {
-                    KeyboardInput {
-                        state: ElementState::Pressed,
-                        virtual_keycode: Some(VirtualKeyCode::Escape),
-                        ..
-                    } => *control_flow = ControlFlow::Exit,
-                    KeyboardInput {
-                        state: ElementState::Pressed,
-                        virtual_keycode: Some(VirtualKeyCode::Q),
-                        ..
-                    } => *control_flow = ControlFlow::Exit,
+    locker.with(move || {
+        use winit::event::*;
+        use winit::event_loop::ControlFlow;
+        event_loop.run(move |event, _, control_flow| {
+            match event {
+                Event::WindowEvent { ref event, .. } => match event {
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::KeyboardInput { input, .. } => match input {
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Q),
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
+                        _ => {}
+                    },
                     _ => {}
                 },
                 _ => {}
-            },
-            _ => {}
-        }
-        monitor_manager.handle_event(event);
-    });
+            }
+            monitor_manager.handle_event(event);
+        });
+    })
 }

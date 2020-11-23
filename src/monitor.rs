@@ -50,6 +50,8 @@ impl Manager {
             .build(event_loop)
             .context("Failed to build window")?;
 
+        window.set_cursor_visible(false);
+
         debug!("Initialising graphics on {:?}", window.id());
         let graphics = self
             .graphics

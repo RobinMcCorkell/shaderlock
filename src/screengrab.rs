@@ -2,18 +2,19 @@ use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
+use sctk::environment::SimpleGlobal;
 use sctk::output::OutputHandler;
 use sctk::reexports::client as wl;
 use sctk::reexports::{
-    protocols::wlr::unstable::screencopy::v1::client::zwlr_screencopy_frame_v1,
     protocols::wlr::unstable::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1,
+    protocols::wlr::unstable::screencopy::v1::client::*,
 };
 use sctk::shm::ShmHandler;
 use wl::protocol::wl_output::WlOutput;
 use wl::protocol::wl_shm::WlShm;
 
 struct WaylandEnv {
-    screencopy: sctk::environment::SimpleGlobal<ZwlrScreencopyManagerV1>,
+    screencopy: SimpleGlobal<ZwlrScreencopyManagerV1>,
     shm: ShmHandler,
     outputs: OutputHandler,
 }
@@ -21,7 +22,7 @@ struct WaylandEnv {
 impl Default for WaylandEnv {
     fn default() -> Self {
         Self {
-            screencopy: sctk::environment::SimpleGlobal::new(),
+            screencopy: SimpleGlobal::new(),
             shm: ShmHandler::new(),
             outputs: OutputHandler::new(),
         }
