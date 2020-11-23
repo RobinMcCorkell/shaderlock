@@ -37,21 +37,27 @@ impl Manager {
         handle: MonitorHandle,
     ) -> Result<()> {
         use winit::platform::unix::MonitorHandleExtUnix;
+        debug!("Grabbing screen on {:?}", handle.name());
         let frame = self
             .screengrabber
             .grab_screen(handle.native_id())
+            .await
             .context("Failed to grab screen")?;
 
         debug!("Creating window on {:?}", handle.name());
         let window = WindowBuilder::new()
-            .with_fullscreen(Some(Fullscreen::Borderless(Some(handle))))
+            .with_fullscreen(Some(Fullscreen::Borderless(Some(handle.clone()))))
             .build(event_loop)
             .context("Failed to build window")?;
+
+        debug!("Initialising graphics on {:?}", window.id());
         let graphics = self
             .graphics
             .init_window(&window, frame)
             .await
             .context("Failed to create graphics context")?;
+
+        debug!("Added window {:?} on {:?}", window.id(), handle.name());
         self.state.insert(window.id(), State { window, graphics });
 
         Ok(())

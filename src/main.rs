@@ -1,5 +1,8 @@
 #![feature(async_closure)]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
 
+mod callback_utils;
 mod graphics;
 mod monitor;
 mod screengrab;
