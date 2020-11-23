@@ -34,12 +34,11 @@ pub struct Locker {
 }
 
 impl Locker {
-    pub fn new() -> Result<Self> {
-        let display = wl::Display::connect_to_env().context("Failed to connect to Wayland")?;
+    pub fn new(display: wl::Display) -> Result<Self> {
         let mut event_queue = display.create_event_queue();
 
         let env = sctk::environment::Environment::new(
-            &wl::Proxy::clone(&display).attach(event_queue.token()),
+            &display.attach(event_queue.token()),
             &mut event_queue,
             WaylandEnv::default(),
         )

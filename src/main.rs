@@ -12,6 +12,8 @@ use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
+use sctk::reexports::client as wl;
+
 fn get_shader_file() -> Result<std::path::PathBuf> {
     use rand::seq::IteratorRandom;
     let mut rng = rand::thread_rng();
@@ -29,15 +31,20 @@ fn get_shader_file() -> Result<std::path::PathBuf> {
 async fn main() -> Result<()> {
     env_logger::init();
 
+    use winit::platform::unix::{EventLoopExtUnix, EventLoopWindowTargetExtUnix};
+    let event_loop = winit::event_loop::EventLoop::<()>::new_wayland();
+    let display = unsafe {
+        wl::Display::from_external_display(event_loop.wayland_display().unwrap() as *mut _)
+    };
+
     let graphics_manager =
         graphics::Manager::new(get_shader_file()?).context("Failed to create graphics manager")?;
 
-    let screengrabber =
-        screengrab::Screengrabber::new().context("Failed to create screengrabber")?;
+    let screengrabber = screengrab::Screengrabber::new(display.clone())
+        .context("Failed to create screengrabber")?;
 
-    let mut locker = locker::Locker::new().context("Failed to create locker")?;
+    let mut locker = locker::Locker::new(display.clone()).context("Failed to create locker")?;
 
-    let event_loop = winit::event_loop::EventLoop::new();
     let mut monitor_manager = monitor::Manager::new(screengrabber, graphics_manager);
     for handle in event_loop.available_monitors() {
         monitor_manager
