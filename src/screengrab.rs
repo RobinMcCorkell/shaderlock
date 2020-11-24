@@ -130,7 +130,7 @@ impl Screengrabber {
 
         let (tx, rx) = futures::channel::oneshot::channel();
         let (donetx, donerx) = futures::channel::oneshot::channel();
-        let mut do_copy = crate::callback_utils::CallOnce::new(
+        let mut do_copy = crate::utils::CallOnce::new(
             move |frame: sctk::reexports::client::Main<
                 zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1,
             >,
@@ -163,7 +163,7 @@ impl Screengrabber {
                     .expect("Failed to send buffer from callback");
             },
         );
-        let mut do_ready = crate::callback_utils::CallOnce::new(move || {
+        let mut do_ready = crate::utils::CallOnce::new(move || {
             debug!("Copy completed");
             donetx
                 .send(())

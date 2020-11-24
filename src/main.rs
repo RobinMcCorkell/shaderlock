@@ -2,11 +2,11 @@
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 
-mod callback_utils;
 mod graphics;
 mod locker;
 mod monitor;
 mod screengrab;
+mod utils;
 
 use anyhow::*;
 #[allow(unused_imports)]
@@ -16,6 +16,7 @@ use sctk::reexports::client as wl;
 
 const DIST: &str = "dist";
 const SHADER_GLOB: &str = "shaders/*.frag";
+const ICON_FILE: &str = "lock-icon.png";
 
 fn get_shader_file() -> Result<std::path::PathBuf> {
     use rand::seq::IteratorRandom;
@@ -30,6 +31,10 @@ fn get_shader_file() -> Result<std::path::PathBuf> {
     Ok(file)
 }
 
+fn get_icon_file() -> Result<std::path::PathBuf> {
+    Ok(format!("{}/{}", DIST, ICON_FILE).into())
+}
+
 #[async_std::main]
 async fn main() -> Result<()> {
     env_logger::init();
@@ -40,8 +45,8 @@ async fn main() -> Result<()> {
         wl::Display::from_external_display(event_loop.wayland_display().unwrap() as *mut _)
     };
 
-    let graphics_manager =
-        graphics::Manager::new(get_shader_file()?).context("Failed to create graphics manager")?;
+    let graphics_manager = graphics::Manager::new(&get_shader_file()?, &get_icon_file()?)
+        .context("Failed to create graphics manager")?;
 
     let screengrabber = screengrab::Screengrabber::new(display.clone())
         .context("Failed to create screengrabber")?;
