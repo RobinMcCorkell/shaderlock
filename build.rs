@@ -1,7 +1,7 @@
 use std::fs::{read_to_string, write};
 
-const FILENAME: &str = "shader.vert";
-const SPIRV_FILENAME: &str = "shader.vert.spv";
+const FILENAME: &str = "resources/bg.vert";
+const SPIRV_FILENAME: &str = "resources/bg.vert.spv";
 
 fn main() {
     let mut compiler = shaderc::Compiler::new().expect("Failed to create compiler");

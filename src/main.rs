@@ -14,10 +14,12 @@ use log::{debug, error, info, warn};
 
 use sctk::reexports::client as wl;
 
+const SHADER_GLOB: &str = "data/shaders/*.frag";
+
 fn get_shader_file() -> Result<std::path::PathBuf> {
     use rand::seq::IteratorRandom;
     let mut rng = rand::thread_rng();
-    let file = glob::glob("shaders/*.frag")
+    let file = glob::glob(SHADER_GLOB)
         .expect("Failed to parse shader file glob")
         .choose(&mut rng)
         .context("Failed to randomly pick a shader file")?
