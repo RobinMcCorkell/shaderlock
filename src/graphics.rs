@@ -465,7 +465,11 @@ fn create_icon_pipeline(
         primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
         color_states: &[wgpu::ColorStateDescriptor {
             format: swapchain_format,
-            color_blend: wgpu::BlendDescriptor::REPLACE,
+            color_blend: wgpu::BlendDescriptor {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
             alpha_blend: wgpu::BlendDescriptor::REPLACE,
             write_mask: wgpu::ColorWrite::ALL,
         }],
