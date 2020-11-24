@@ -193,20 +193,34 @@ impl Screengrabber {
                 ev => panic!("Unexpected event {:?}", ev),
             });
 
-        self.communicate()?;
+        let poller = futures::future::poll_fn(|ctx| match self.communicate() {
+            Ok(()) => {
+                ctx.waker().clone().wake();
+                futures::task::Poll::Pending
+            }
+            Err(e) => futures::task::Poll::Ready(e),
+        });
 
-        debug!("Waiting for screengrab buffer");
-        let buf = rx.await?;
-        debug!("Waiting for buffer ready");
-        donerx.await?;
+        let waiter = async {
+            debug!("Waiting for screengrab buffer");
+            let buf = rx.await?;
+            debug!("Waiting for buffer ready");
+            donerx.await?;
+            Ok(buf)
+        };
+        futures::pin_mut!(waiter);
+
+        let result: Result<Buffer> = match futures::future::select(poller, waiter).await {
+            futures::future::Either::Left((err, _)) => Err(err),
+            futures::future::Either::Right((buf, _)) => Ok(buf),
+        }?;
+        let buf = result?;
+
         Ok(buf)
     }
 
     pub fn communicate(&mut self) -> Result<()> {
         debug!("Communicating with Wayland");
-        self.event_queue
-            .sync_roundtrip(&mut (), |_, _, _| unreachable!())
-            .context("Failed to tx/rx with Wayland")?;
         self.event_queue
             .sync_roundtrip(&mut (), |_, _, _| unreachable!())
             .context("Failed to tx/rx with Wayland")?;
