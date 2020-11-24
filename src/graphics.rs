@@ -114,7 +114,7 @@ impl Manager {
             screenshot,
         )?;
 
-        let (icon_render_pipeline, icon_bind_group) =
+        let (icon_render_pipeline, icon_bind_group, icon_uniforms_handle) =
             create_icon_pipeline(&device, &queue, sc_desc.format, surface_size, &self.icon)?;
 
         Ok(State {
@@ -131,6 +131,7 @@ impl Manager {
 
             icon_render_pipeline,
             icon_bind_group,
+            icon_uniforms_handle,
         })
     }
 }
@@ -149,6 +150,7 @@ pub struct State {
 
     icon_render_pipeline: wgpu::RenderPipeline,
     icon_bind_group: wgpu::BindGroup,
+    icon_uniforms_handle: UniformsHandle,
 }
 
 impl State {
@@ -169,6 +171,20 @@ impl State {
             &self.bg_uniforms_handle.buffer,
             0,
             bytemuck::cast_slice(&[self.bg_uniforms_handle.data]),
+        );
+
+        let min_dimension = new_size.width.min(new_size.height);
+        let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
+            min_dimension as f32 / new_size.width as f32,
+            min_dimension as f32 / new_size.height as f32,
+            1.0,
+        );
+        self.icon_uniforms_handle.data.transform =
+            self.icon_uniforms_handle.texture_transform * resolution_transform;
+        self.queue.write_buffer(
+            &self.icon_uniforms_handle.buffer,
+            0,
+            bytemuck::cast_slice(&[self.icon_uniforms_handle.data]),
         );
     }
 
@@ -415,7 +431,7 @@ fn create_icon_pipeline(
     swapchain_format: wgpu::TextureFormat,
     surface_size: (u32, u32),
     icon: &image::RgbaImage,
-) -> Result<(wgpu::RenderPipeline, wgpu::BindGroup)> {
+) -> Result<(wgpu::RenderPipeline, wgpu::BindGroup, UniformsHandle)> {
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
             wgpu::BindGroupLayoutEntry {
@@ -432,6 +448,15 @@ fn create_icon_pipeline(
                 binding: 1,
                 visibility: wgpu::ShaderStage::FRAGMENT,
                 ty: wgpu::BindingType::Sampler { comparison: false },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStage::VERTEX,
+                ty: wgpu::BindingType::UniformBuffer {
+                    dynamic: false,
+                    min_binding_size: None,
+                },
                 count: None,
             },
         ],
@@ -527,6 +552,26 @@ fn create_icon_pipeline(
         },
     );
 
+    let min_dimension = surface_size.0.min(surface_size.1);
+    let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
+        min_dimension as f32 / surface_size.0 as f32,
+        min_dimension as f32 / surface_size.1 as f32,
+        1.0,
+    );
+    let texture_transform = cgmath::Matrix4::from_scale(0.2);
+    // let texture_transform = cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.5, 0.5, 0.0))
+    //     * cgmath::Matrix4::from_nonuniform_scale(1.0, -1.0, 1.0)
+    //     * cgmath::Matrix4::from_translation(cgmath::Vector3::new(-0.5, -0.5, 0.0));
+    let uniforms = Uniforms {
+        transform: texture_transform * resolution_transform,
+    };
+
+    let uniforms_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Uniforms Buffer"),
+        contents: bytemuck::cast_slice(&[uniforms]),
+        usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+    });
+
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &bind_group_layout,
         entries: &[
@@ -538,9 +583,19 @@ fn create_icon_pipeline(
                 binding: 1,
                 resource: wgpu::BindingResource::Sampler(&sampler),
             },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Buffer(uniforms_buffer.slice(..)),
+            },
         ],
         label: Some("icon bind group"),
     });
 
-    Ok((pipeline, bind_group))
+    let uniforms_handle = UniformsHandle {
+        data: uniforms,
+        texture_transform: texture_transform,
+        buffer: uniforms_buffer,
+    };
+
+    Ok((pipeline, bind_group, uniforms_handle))
 }
