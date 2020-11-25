@@ -44,7 +44,6 @@ impl Manager {
         screenshot: crate::screengrab::Buffer,
     ) -> Result<State> {
         let size = window.inner_size();
-        let surface_size = (size.width, size.height);
 
         let surface = unsafe { self.instance.create_surface(window) };
         let adapter = self
@@ -85,14 +84,12 @@ impl Manager {
             &device,
             &queue,
             sc_desc.format,
-            surface_size,
             self.shader.shallow_copy(),
             screenshot,
         )?;
-        let icon =
-            self::icon::State::new(&device, &queue, sc_desc.format, surface_size, &self.icon)?;
+        let icon = self::icon::State::new(&device, &queue, sc_desc.format, &self.icon)?;
 
-        Ok(State {
+        let mut me = State {
             surface,
             device,
             queue,
@@ -102,7 +99,10 @@ impl Manager {
 
             bg,
             icon,
-        })
+        };
+
+        me.resize(size);
+        Ok(me)
     }
 }
 
@@ -125,8 +125,14 @@ impl State {
         self.sc_desc.height = new_size.height;
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
 
-        self.bg.resize(&self.queue, new_size);
-        self.icon.resize(&self.queue, new_size);
+        let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
+            1.0 / new_size.width as f32,
+            1.0 / new_size.height as f32,
+            1.0,
+        );
+
+        self.bg.resize(&self.queue, resolution_transform);
+        self.icon.resize(&self.queue, resolution_transform);
     }
 
     pub fn render(&mut self, time: f32) {

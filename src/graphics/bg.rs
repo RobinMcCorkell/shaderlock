@@ -40,7 +40,6 @@ impl State {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         swapchain_format: wgpu::TextureFormat,
-        surface_size: (u32, u32),
         shader: wgpu::ShaderModuleSource,
         mut screenshot: crate::screengrab::Buffer,
     ) -> Result<Self> {
@@ -165,18 +164,13 @@ impl State {
             },
         );
 
-        let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
-            1.0 / surface_size.0 as f32,
-            1.0 / surface_size.1 as f32,
-            1.0,
-        );
         let texture_transform =
             cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.5, 0.5, 0.0))
                 * screenshot.transform_matrix()
                 * cgmath::Matrix4::from_nonuniform_scale(1.0, -1.0, 1.0)
                 * cgmath::Matrix4::from_translation(cgmath::Vector3::new(-0.5, -0.5, 0.0));
         let uniforms = Uniforms {
-            transform: texture_transform * resolution_transform,
+            transform: texture_transform,
         };
 
         let uniforms_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -216,12 +210,7 @@ impl State {
             uniforms_handle,
         })
     }
-    pub fn resize(&mut self, queue: &wgpu::Queue, new_size: winit::dpi::PhysicalSize<u32>) {
-        let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
-            1.0 / new_size.width as f32,
-            1.0 / new_size.height as f32,
-            1.0,
-        );
+    pub fn resize(&mut self, queue: &wgpu::Queue, resolution_transform: cgmath::Matrix4<f32>) {
         self.uniforms_handle.data.transform =
             self.uniforms_handle.texture_transform * resolution_transform;
         queue.write_buffer(
