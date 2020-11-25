@@ -9,6 +9,7 @@ use sctk::reexports::{
 };
 
 const PAM_SERVICE: &str = "xsecurelock";
+const PASSWORD_SIZE: usize = 256;
 
 struct WaylandEnv {
     input_inhibit: SimpleGlobal<ZwlrInputInhibitManagerV1>,
@@ -78,7 +79,7 @@ impl Locker {
 pub struct LockContext<'a> {
     auth: pam::Authenticator<'a, pam::PasswordConv>,
     username: String,
-    password: String,
+    password: arrayvec::ArrayString<[u8; PASSWORD_SIZE]>,
 }
 
 impl<'a> LockContext<'a> {
@@ -94,12 +95,14 @@ impl<'a> LockContext<'a> {
         Ok(Self {
             auth,
             username,
-            password: "".to_string(),
+            password: arrayvec::ArrayString::new(),
         })
     }
 
     pub fn push(&mut self, c: char) {
-        self.password.push(c)
+        self.password
+            .try_push(c)
+            .unwrap_or_else(|_| error!("Overflowed password field"))
     }
 
     pub fn pop(&mut self) -> Option<char> {
@@ -115,7 +118,7 @@ impl<'a> LockContext<'a> {
         debug!("Beginning authentication");
         self.auth
             .get_handler()
-            .set_credentials(&self.username, &self.password);
+            .set_credentials(&self.username, self.password.as_str());
         self.clear();
         let result = self.auth.authenticate();
         info!("Authentication result: {:?}", result);
