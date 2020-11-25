@@ -8,6 +8,8 @@ use sctk::reexports::{
     protocols::wlr::unstable::input_inhibitor::v1::client::zwlr_input_inhibit_manager_v1::ZwlrInputInhibitManagerV1,
 };
 
+const PAM_SERVICE: &str = "xsecurelock";
+
 struct WaylandEnv {
     input_inhibit: SimpleGlobal<ZwlrInputInhibitManagerV1>,
 }
@@ -28,6 +30,7 @@ sctk::environment!(
     multis = [
     ],
 );
+
 pub struct Locker {
     event_queue: wl::EventQueue,
     env: sctk::environment::Environment<WaylandEnv>,
@@ -49,7 +52,7 @@ impl Locker {
 
     pub fn with<F, O>(&mut self, f: F) -> Result<O>
     where
-        F: FnOnce() -> O,
+        F: FnOnce(LockContext<'static>) -> O,
     {
         debug!("Starting input inhibitor");
         let input_inhibit_manager = self.env.require_global::<ZwlrInputInhibitManagerV1>();
@@ -57,7 +60,7 @@ impl Locker {
 
         self.communicate()?;
 
-        Ok(f())
+        Ok(f(LockContext::new()?))
     }
 
     pub fn communicate(&mut self) -> Result<()> {
@@ -69,5 +72,53 @@ impl Locker {
             .sync_roundtrip(&mut (), |_, _, _| unreachable!())
             .context("Failed to tx/rx with Wayland")?;
         Ok(())
+    }
+}
+
+pub struct LockContext<'a> {
+    auth: pam::Authenticator<'a, pam::PasswordConv>,
+    username: String,
+    password: String,
+}
+
+impl<'a> LockContext<'a> {
+    fn new() -> Result<Self> {
+        let auth =
+            pam::Authenticator::with_password(PAM_SERVICE).context("Failed to initialize PAM")?;
+        let username = users::get_current_username()
+            .context("Failed to get username")?
+            .into_string()
+            .map_err(|oss| anyhow!("Failed to parse username {:?}", oss))?;
+        info!("My username: {}", username);
+
+        Ok(Self {
+            auth,
+            username,
+            password: "".to_string(),
+        })
+    }
+
+    pub fn push(&mut self, c: char) {
+        self.password.push(c)
+    }
+
+    pub fn pop(&mut self) -> Option<char> {
+        self.password.pop()
+    }
+
+    pub fn clear(&mut self) {
+        debug!("Clearing password buffer");
+        self.password.clear()
+    }
+
+    pub fn authenticate(&mut self) -> pam::PamResult<()> {
+        debug!("Beginning authentication");
+        self.auth
+            .get_handler()
+            .set_credentials(&self.username, &self.password);
+        self.clear();
+        let result = self.auth.authenticate();
+        info!("Authentication result: {:?}", result);
+        result
     }
 }

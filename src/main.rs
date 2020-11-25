@@ -61,24 +61,42 @@ async fn main() -> Result<()> {
             .context("Failed to add monitor")?;
     }
 
-    locker.with(move || {
+    locker.with(move |mut lock| {
         use winit::event::*;
         use winit::event_loop::ControlFlow;
         event_loop.run(move |event, _, control_flow| {
             match event {
                 Event::WindowEvent { ref event, .. } => match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::ReceivedCharacter(c) => {
+                        if !c.is_control() {
+                            lock.push(*c);
+                        }
+                    }
                     WindowEvent::KeyboardInput { input, .. } => match input {
                         KeyboardInput {
                             state: ElementState::Pressed,
                             virtual_keycode: Some(VirtualKeyCode::Escape),
                             ..
-                        } => *control_flow = ControlFlow::Exit,
+                        } => {
+                            lock.clear();
+                        }
                         KeyboardInput {
                             state: ElementState::Pressed,
-                            virtual_keycode: Some(VirtualKeyCode::Q),
+                            virtual_keycode: Some(VirtualKeyCode::Back),
                             ..
-                        } => *control_flow = ControlFlow::Exit,
+                        } => {
+                            lock.pop();
+                        }
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Return),
+                            ..
+                        } => {
+                            match lock.authenticate() {
+                                Ok(_) => *control_flow = ControlFlow::Exit,
+                                Err(e) => warn!("Authentication failed: {}", e),
+                            };
+                        }
                         _ => {}
                     },
                     _ => {}
