@@ -1,7 +1,8 @@
 [package]
-name = "blurlock"
+name = "shaderlock"
 version = "0.1.0"
 authors = ["Robin McCorkell <robin@mccorkell.me.uk>"]
+license = "MIT"
 edition = "2018"
 
 [dependencies]
