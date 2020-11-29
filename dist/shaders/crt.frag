@@ -21,14 +21,20 @@ const float ROLL_PERIOD = 6.0;
 const float ABBERATION_FACTOR = 1.5;
 const float ABBERATION_AMOUNT = 0.02;
 
-const float VIGNETTE_SCALE = 2.5;
-const float VIGNETTE_FACTOR = 3.5;
-const float VIGNETTE_AMOUNT = 0.3;
+const float VIGNETTE_SCALE = 2.2;
+const float VIGNETTE_FACTOR = 5.0;
+const float VIGNETTE_AMOUNT = 0.9;
 
 const float SCAN_LINE_COUNT = 700.0;
 const float SCAN_LINE_AMOUNT = 0.25;
 const float SCAN_LINE_FACTOR = 2.2;
 const float SCAN_LINE_DRIFT = 0.002;
+
+const float DOWNSCALE_RESOLUTION = 300.0;
+
+vec2 downscale(vec2 v) {
+    return floor(v * DOWNSCALE_RESOLUTION) / DOWNSCALE_RESOLUTION;
+}
 
 float get_center_distance(vec2 p) {
     return distance(p, vec2(0.5)) * 2.0;
@@ -53,9 +59,9 @@ vec2 roll_coords(vec2 p) {
 vec4 sample_abberation(vec2 p_fb, vec2 p) {
     float d = pow(get_center_distance(p), ABBERATION_FACTOR);
 
-    float r = texture(sampler2D(t_screenshot, s_screenshot), p_fb).r;
-    float g = texture(sampler2D(t_screenshot, s_screenshot), p_fb * (1.0 + d * ABBERATION_AMOUNT)).g;
-    float b = texture(sampler2D(t_screenshot, s_screenshot), p_fb * (1.0 - d * ABBERATION_AMOUNT)).b;
+    float r = texture(sampler2D(t_screenshot, s_screenshot), downscale(p_fb)).r;
+    float g = texture(sampler2D(t_screenshot, s_screenshot), downscale(p_fb * (1.0 + d * ABBERATION_AMOUNT))).g;
+    float b = texture(sampler2D(t_screenshot, s_screenshot), downscale(p_fb * (1.0 - d * ABBERATION_AMOUNT))).b;
 
     return vec4(r, g, b, 1.0);
 }
@@ -77,8 +83,7 @@ void main() {
     vec4 ouv = iTransform * vec4(gl_FragCoord.xy, 0.0, 1.0);
     vec2 uv = ouv.xy / ouv.w;
 
-    vec2 uv_rendered = uv;
-    vec2 uv_monitor = bulge_coords(uv_rendered, BULGE_AMOUNT);
+    vec2 uv_monitor = bulge_coords(uv, BULGE_AMOUNT);
     vec2 uv_fb = roll_coords(uv_monitor);
 
     vec4 c = sample_abberation(uv_fb, uv_monitor);
