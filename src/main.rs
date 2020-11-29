@@ -41,6 +41,11 @@ async fn main() -> Result<()> {
     use clap::*;
     let app = app_from_crate!()
         .arg(
+            Arg::with_name("skip_auth")
+                .long("skip_auth")
+                .help("Authentication always succeeds, for testing"),
+        )
+        .arg(
             Arg::with_name("shader")
                 .long("shader")
                 .help("Shader applied to the lock screen background")
@@ -85,6 +90,8 @@ async fn main() -> Result<()> {
             .context("Failed to add monitor")?;
     }
 
+    let skip_auth = matches.is_present("skip_auth");
+
     locker.with(move |mut lock| {
         sd_notify::notify(true, &[sd_notify::NotifyState::Ready])
             .expect("Failed to notify readiness");
@@ -118,10 +125,15 @@ async fn main() -> Result<()> {
                             virtual_keycode: Some(VirtualKeyCode::Return),
                             ..
                         } => {
-                            match lock.authenticate() {
-                                Ok(_) => *control_flow = ControlFlow::Exit,
-                                Err(e) => warn!("Authentication failed: {}", e),
-                            };
+                            if skip_auth {
+                                warn!("Skipping authentication, exiting");
+                                *control_flow = ControlFlow::Exit;
+                            } else {
+                                match lock.authenticate() {
+                                    Ok(_) => *control_flow = ControlFlow::Exit,
+                                    Err(e) => warn!("Authentication failed: {}", e),
+                                };
+                            }
                         }
                         _ => {}
                     },

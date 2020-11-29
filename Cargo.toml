@@ -25,7 +25,7 @@ pam = "0.7.0"
 users = "0.11.0"
 arrayvec = "0.5.2"
 sd-notify = "0.1.1"
-clap = { version = "2.33.3", features = ["yaml"]}
+clap = "2.33.3"
 
 [build-dependencies]
 shaderc = "0.7.0"
