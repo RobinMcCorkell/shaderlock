@@ -14,14 +14,14 @@ use log::{debug, error, info, warn};
 
 use sctk::reexports::client as wl;
 
-const DIST: &str = "dist";
+const DATADIR: &str = env!("DATADIR");
 const SHADER_GLOB: &str = "shaders/*.frag";
 const ICON_FILE: &str = "lock-icon.png";
 
 fn get_shader_file() -> Result<std::path::PathBuf> {
     use rand::seq::IteratorRandom;
     let mut rng = rand::thread_rng();
-    let file = glob::glob(&format!("{}/{}", DIST, SHADER_GLOB))
+    let file = glob::glob(&format!("{}/{}", DATADIR, SHADER_GLOB))
         .expect("Failed to parse shader file glob")
         .choose(&mut rng)
         .context("Failed to randomly pick a shader file")?
@@ -32,12 +32,37 @@ fn get_shader_file() -> Result<std::path::PathBuf> {
 }
 
 fn get_icon_file() -> Result<std::path::PathBuf> {
-    Ok(format!("{}/{}", DIST, ICON_FILE).into())
+    Ok(format!("{}/{}", DATADIR, ICON_FILE).into())
 }
 
 #[async_std::main]
 async fn main() -> Result<()> {
     env_logger::init();
+
+    use clap::*;
+    let app = app_from_crate!()
+        .arg(
+            Arg::with_name("shader")
+                .long("shader")
+                .help("Shader applied to the lock screen background")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("icon")
+                .long("icon")
+                .help("Icon to overlay on the lock screen")
+                .takes_value(true),
+        );
+    let matches = app.get_matches();
+
+    let shader_file = match matches.value_of("shader") {
+        Some(s) => std::path::PathBuf::from(s),
+        None => get_shader_file()?,
+    };
+    let icon_file = match matches.value_of("icon") {
+        Some(s) => std::path::PathBuf::from(s),
+        None => get_icon_file()?,
+    };
 
     use winit::platform::unix::{EventLoopExtUnix, EventLoopWindowTargetExtUnix};
     let event_loop = winit::event_loop::EventLoop::<()>::new_wayland();
@@ -45,7 +70,7 @@ async fn main() -> Result<()> {
         wl::Display::from_external_display(event_loop.wayland_display().unwrap() as *mut _)
     };
 
-    let graphics_manager = graphics::Manager::new(&get_shader_file()?, &get_icon_file()?)
+    let graphics_manager = graphics::Manager::new(&shader_file, &icon_file)
         .context("Failed to create graphics manager")?;
 
     let screengrabber = screengrab::Screengrabber::new(display.clone())

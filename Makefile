@@ -1,13 +1,13 @@
-prefix = $(HOME)/.local
-bindir = $(prefix)/bin
-distdir = $(prefix)/share/shaderlock
+PREFIX = $(HOME)/.local
+BINDIR = $(PREFIX)/bin
+export DATADIR = $(PREFIX)/share/shaderlock
 
 all: shaderlock.daemon dist
 	cargo build --release
 
 install: all
-	install -D -t $(bindir) target/release/shaderlock shaderlock.daemon
-	install -d $(distdir)
-	cp -a -t $(distdir) dist/*
+	install -D -t $(BINDIR) target/release/shaderlock shaderlock.daemon
+	install -d $(DATADIR)
+	cp -a -t $(DATADIR) dist/*
 
 .PHONY: all install
