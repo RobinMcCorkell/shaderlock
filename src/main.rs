@@ -62,6 +62,8 @@ async fn main() -> Result<()> {
     }
 
     locker.with(move |mut lock| {
+        sd_notify::notify(true, &[sd_notify::NotifyState::Ready])
+            .expect("Failed to notify readiness");
         use winit::event::*;
         use winit::event_loop::ControlFlow;
         event_loop.run(move |event, _, control_flow| {

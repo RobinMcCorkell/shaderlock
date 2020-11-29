@@ -1,0 +1,3 @@
+#!/bin/sh
+
+exec systemd-run --user -u shaderlock --service-type=notify shaderlock "$@"
