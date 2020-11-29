@@ -1,4 +1,3 @@
-#![feature(async_closure)]
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 
