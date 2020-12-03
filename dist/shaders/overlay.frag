@@ -14,12 +14,13 @@ layout(push_constant) uniform FrameUniforms {
 
 const float PI = 3.141529;
 const float SPEED = 0.3;
-const float DIRECTIONS = 4.0;
+const float DIRECTIONS = 3.0;
+const float OFFSET_FRACT = 0.1;
 const float LOD_BIAS = 3.0;
 
 vec4 overlay(vec2 uv, float amount) {
     vec4 color = vec4(0.0);
-    for (float d = 0.0; d < PI; d += PI/DIRECTIONS) {
+    for (float d = OFFSET_FRACT*PI/DIRECTIONS; d < PI; d += PI/DIRECTIONS) {
         color += texture(sampler2D(t_screenshot, s_screenshot), uv + vec2(cos(d), sin(d)) * amount, LOD_BIAS);
     }
     return color / DIRECTIONS;
