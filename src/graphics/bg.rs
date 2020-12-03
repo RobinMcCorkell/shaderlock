@@ -7,6 +7,8 @@ use wgpu::util::DeviceExt;
 pub const VS_MAIN: &str = "main";
 pub const FS_MAIN: &str = "main";
 
+const MIPMAP_LEVELS: u32 = 8;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct Uniforms {
@@ -122,15 +124,16 @@ impl State {
             height: screenshot.height(),
             depth: 1,
         };
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+        let texture_descriptor = wgpu::TextureDescriptor {
             label: Some("Screenshot"),
             size: texture_size,
-            mip_level_count: 1,
+            mip_level_count: MIPMAP_LEVELS,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
-        });
+        };
+        let texture = device.create_texture(&texture_descriptor);
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::MirrorRepeat,
@@ -138,7 +141,7 @@ impl State {
             address_mode_w: wgpu::AddressMode::MirrorRepeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
 
@@ -163,6 +166,12 @@ impl State {
                 depth: 1,
             },
         );
+
+        use wgpu_mipmap::MipmapGenerator;
+        let mipmap_generator = wgpu_mipmap::RecommendedMipmapGenerator::new(&device);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        mipmap_generator.generate(&device, &mut encoder, &texture, &texture_descriptor)?;
+        queue.submit(std::iter::once(encoder.finish()));
 
         let texture_transform =
             cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.5, 0.5, 0.0))

@@ -26,6 +26,7 @@ users = "0.11.0"
 arrayvec = "0.5.2"
 sd-notify = "0.1.1"
 clap = "2.33.3"
+wgpu-mipmap = "0.1.0"
 
 [build-dependencies]
 shaderc = "0.7.0"
