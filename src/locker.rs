@@ -8,7 +8,7 @@ use sctk::reexports::{
     protocols::wlr::unstable::input_inhibitor::v1::client::zwlr_input_inhibit_manager_v1::ZwlrInputInhibitManagerV1,
 };
 
-const PAM_SERVICE: &str = "xsecurelock";
+const PAM_SERVICE: &str = env!("PAM_SERVICE");
 const PASSWORD_SIZE: usize = 256;
 
 struct WaylandEnv {
