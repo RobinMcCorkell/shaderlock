@@ -52,6 +52,7 @@ pub struct Buffer {
     mempool: sctk::shm::MemPool,
     info: BufferInfo,
     transform: sctk::output::Transform,
+    y_invert: bool,
 }
 
 impl Buffer {
@@ -87,10 +88,10 @@ impl Buffer {
                 _270 | Flipped270 => 3.0,
                 _ => panic!("Unsupported transform"),
             };
-        let flip = match self.transform {
-            Flipped | Flipped90 | Flipped180 | Flipped270 => true,
-            _ => false,
-        };
+        let flip = matches!(
+            self.transform,
+            Flipped | Flipped90 | Flipped180 | Flipped270
+        ) ^ self.y_invert;
         Matrix4::from_angle_z(angle)
             * Matrix4::from_nonuniform_scale(if flip { -1.0 } else { 1.0 }, 1.0, 1.0)
     }
@@ -130,6 +131,7 @@ impl Screengrabber {
 
         let (tx, rx) = futures::channel::oneshot::channel();
         let (donetx, donerx) = futures::channel::oneshot::channel();
+        let (flagstx, flagsrx) = futures::channel::oneshot::channel();
         let mut do_copy = crate::utils::CallOnce::new(
             move |frame: sctk::reexports::client::Main<
                 zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1,
@@ -157,6 +159,7 @@ impl Screengrabber {
                     mempool,
                     info,
                     transform,
+                    y_invert: false, // Filled in later.
                 };
                 tx.send(buf)
                     .map_err(|_| ())
@@ -169,6 +172,13 @@ impl Screengrabber {
                 .send(())
                 .expect("Failed to signal done from callback");
         });
+
+        let mut do_flags =
+            crate::utils::CallOnce::new(move |flags: zwlr_screencopy_frame_v1::Flags| {
+                flagstx
+                    .send(flags)
+                    .expect("Failed to send flags from callback");
+            });
 
         debug!("Starting screengrab");
         use zwlr_screencopy_frame_v1::Event;
@@ -187,7 +197,9 @@ impl Screengrabber {
                 Event::Ready { .. } => {
                     do_ready();
                 }
-                Event::Flags { .. } => {}
+                Event::Flags { flags } => {
+                    do_flags(flags);
+                }
                 Event::LinuxDmabuf { .. } => {}
                 Event::Failed => panic!("Failed to copy buffer"),
                 ev => panic!("Unexpected event {:?}", ev),
@@ -203,7 +215,10 @@ impl Screengrabber {
 
         let waiter = async {
             debug!("Waiting for screengrab buffer");
-            let buf = rx.await?;
+            let (buf, flags) = futures::join!(rx, flagsrx);
+            let mut buf = buf?;
+            let flags = flags?;
+            buf.y_invert = flags.contains(zwlr_screencopy_frame_v1::Flags::YInvert);
             debug!("Waiting for buffer ready");
             donerx.await?;
             Ok(buf)

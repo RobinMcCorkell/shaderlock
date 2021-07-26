@@ -176,7 +176,6 @@ impl State {
         let texture_transform =
             cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.5, 0.5, 0.0))
                 * screenshot.transform_matrix()
-                * cgmath::Matrix4::from_nonuniform_scale(1.0, -1.0, 1.0)
                 * cgmath::Matrix4::from_translation(cgmath::Vector3::new(-0.5, -0.5, 0.0));
         let uniforms = Uniforms {
             transform: texture_transform,
