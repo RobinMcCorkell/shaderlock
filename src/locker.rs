@@ -79,7 +79,7 @@ impl Locker {
 pub struct LockContext<'a> {
     auth: pam::Authenticator<'a, pam::PasswordConv>,
     username: String,
-    password: arrayvec::ArrayString<[u8; PASSWORD_SIZE]>,
+    password: arrayvec::ArrayString<{ PASSWORD_SIZE }>,
 }
 
 impl<'a> LockContext<'a> {
