@@ -7,6 +7,7 @@ mod monitor;
 mod screengrab;
 mod utils;
 
+use actix::Actor;
 use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -34,7 +35,7 @@ fn get_icon_file() -> Result<std::path::PathBuf> {
     Ok(format!("{}/{}", DATADIR, ICON_FILE).into())
 }
 
-#[async_std::main]
+#[actix_rt::main]
 async fn main() -> Result<()> {
     env_logger::init();
 
@@ -78,7 +79,8 @@ async fn main() -> Result<()> {
         .context("Failed to create graphics manager")?;
 
     let screengrabber = screengrab::Screengrabber::new(display.clone())
-        .context("Failed to create screengrabber")?;
+        .context("Failed to create screengrabber")?
+        .start();
 
     let mut locker = locker::Locker::new(display.clone()).context("Failed to create locker")?;
 

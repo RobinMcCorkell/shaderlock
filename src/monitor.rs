@@ -2,6 +2,8 @@ use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
+use actix::prelude::*;
+
 use std::collections::HashMap;
 use winit::event_loop::EventLoop;
 use winit::monitor::*;
@@ -15,14 +17,14 @@ pub struct State {
 }
 
 pub struct Manager {
-    screengrabber: Screengrabber,
+    screengrabber: Addr<Screengrabber>,
     graphics: crate::graphics::Manager,
     state: HashMap<WindowId, State>,
     init_time: std::time::Instant,
 }
 
 impl Manager {
-    pub fn new(screengrabber: Screengrabber, graphics: crate::graphics::Manager) -> Self {
+    pub fn new(screengrabber: Addr<Screengrabber>, graphics: crate::graphics::Manager) -> Self {
         Self {
             screengrabber,
             graphics,
@@ -40,8 +42,11 @@ impl Manager {
         debug!("Grabbing screen on {:?}", handle.name());
         let frame = self
             .screengrabber
-            .grab_screen(handle.native_id())
+            .send(crate::screengrab::GrabScreen {
+                output_id: handle.native_id(),
+            })
             .await
+            .context("Failed to send grab screen request")?
             .context("Failed to grab screen")?;
 
         debug!("Creating window on {:?}", handle.name());

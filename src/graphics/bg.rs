@@ -43,7 +43,7 @@ impl State {
         queue: &wgpu::Queue,
         swapchain_format: wgpu::TextureFormat,
         shader: wgpu::ShaderModuleSource,
-        mut screenshot: crate::screengrab::Buffer,
+        screenshot: crate::screengrab::Buffer,
     ) -> Result<Self> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[

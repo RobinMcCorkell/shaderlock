@@ -95,7 +95,6 @@ impl Manager {
             queue,
             sc_desc,
             swap_chain,
-            size,
 
             bg,
             icon,
@@ -112,7 +111,6 @@ pub struct State {
     queue: wgpu::Queue,
     sc_desc: wgpu::SwapChainDescriptor,
     swap_chain: wgpu::SwapChain,
-    size: winit::dpi::PhysicalSize<u32>,
 
     bg: self::bg::State,
     icon: self::icon::State,
@@ -120,7 +118,6 @@ pub struct State {
 
 impl State {
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        self.size = new_size;
         self.sc_desc.width = new_size.width;
         self.sc_desc.height = new_size.height;
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);

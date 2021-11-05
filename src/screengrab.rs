@@ -2,6 +2,8 @@ use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
+use actix::prelude::*;
+
 use sctk::environment::SimpleGlobal;
 use sctk::output::OutputHandler;
 use sctk::reexports::client as wl;
@@ -48,21 +50,39 @@ struct BufferInfo {
     format: sctk::shm::Format,
 }
 
-pub struct Buffer {
+struct BufferMempool {
     mempool: sctk::shm::MemPool,
     info: BufferInfo,
     transform: sctk::output::Transform,
     y_invert: bool,
 }
 
-impl Buffer {
-    pub fn as_bgra(&mut self) -> &[u8] {
+impl Into<Buffer> for BufferMempool {
+    fn into(mut self) -> Buffer {
         use sctk::shm::Format::*;
         if self.info.format != Argb8888 {
             panic!("Unsupported format: {:?}", self.info.format);
         }
         debug!("Buffer size = {}", self.mempool.mmap().len());
-        self.mempool.mmap()
+        Buffer {
+            bgra: self.mempool.mmap().to_owned(),
+            info: self.info,
+            transform: self.transform,
+            y_invert: self.y_invert,
+        }
+    }
+}
+
+pub struct Buffer {
+    bgra: Vec<u8>,
+    info: BufferInfo,
+    transform: sctk::output::Transform,
+    y_invert: bool,
+}
+
+impl Buffer {
+    pub fn as_bgra(&self) -> &[u8] {
+        &self.bgra
     }
 
     pub fn width(&self) -> u32 {
@@ -98,7 +118,8 @@ impl Buffer {
 }
 
 pub struct Screengrabber {
-    event_queue: wl::EventQueue,
+    display: wl::Display,
+    event_queue: Option<wl::EventQueue>,
     env: sctk::environment::Environment<WaylandEnv>,
 }
 
@@ -113,107 +134,154 @@ impl Screengrabber {
         )
         .context("Failed to create Wayland environment")?;
 
-        Ok(Self { event_queue, env })
+        Ok(Self {
+            display,
+            event_queue: Some(event_queue),
+            env,
+        })
     }
+}
 
-    pub async fn grab_screen(&mut self, output_id: u32) -> Result<Buffer> {
-        let screencopy = self.env.require_global::<ZwlrScreencopyManagerV1>();
-        let output = self
-            .env
-            .get_all_globals::<WlOutput>()
-            .into_iter()
-            .find(|o| sctk::output::with_output_info(o, |info| info.id) == Some(output_id))
-            .context("Failed to find Wayland output for monitor")?;
+impl Actor for Screengrabber {
+    type Context = actix::Context<Self>;
 
-        let transform = sctk::output::with_output_info(&output, |oi| oi.transform)
-            .context("Failed to get window transform state")?;
-        let shm = self.env.require_global::<WlShm>();
+    fn started(&mut self, ctx: &mut Self::Context) {
+        let mut event_queue = self.event_queue.take().unwrap();
+        let fd = tokio::io::unix::AsyncFd::new(event_queue.display().get_connection_fd()).unwrap();
 
-        let (tx, rx) = futures::channel::oneshot::channel();
-        let (donetx, donerx) = futures::channel::oneshot::channel();
-        let (flagstx, flagsrx) = futures::channel::oneshot::channel();
-        let mut do_copy = crate::utils::CallOnce::new(
-            move |frame: sctk::reexports::client::Main<
-                zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1,
-            >,
-                  format,
-                  width,
-                  height,
-                  stride| {
-                let info = BufferInfo {
-                    width,
-                    height,
-                    stride,
-                    format,
-                };
-                debug!("Creating buffer with info {:?}", info);
-                let mut mempool =
-                    sctk::shm::MemPool::new(shm, |_| {}).expect("Failed to create mempool");
-                mempool
-                    .resize((height * stride) as usize)
-                    .expect("Failed to resize buffer");
-                let buffer = mempool.buffer(0, width as i32, height as i32, stride as i32, format);
-                frame.copy(&buffer);
+        debug!("Spawning screengrab event dispatch");
+        ctx.spawn(
+            async move {
+                loop {
+                    let mut rg = fd.readable().await.unwrap();
+                    rg.clear_ready();
+                    debug!("Dispatching screengrab events");
+                    if let Some(guard) = event_queue.prepare_read() {
+                        if let Err(e) = guard.read_events() {
+                            if e.kind() != std::io::ErrorKind::WouldBlock {
+                                todo!();
+                            }
+                        }
+                    }
 
-                let buf = Buffer {
-                    mempool,
-                    info,
-                    transform,
-                    y_invert: false, // Filled in later.
-                };
-                tx.send(buf)
-                    .map_err(|_| ())
-                    .expect("Failed to send buffer from callback");
-            },
-        );
-        let mut do_ready = crate::utils::CallOnce::new(move || {
-            debug!("Copy completed");
-            donetx
-                .send(())
-                .expect("Failed to signal done from callback");
-        });
-
-        let mut do_flags =
-            crate::utils::CallOnce::new(move |flags: zwlr_screencopy_frame_v1::Flags| {
-                flagstx
-                    .send(flags)
-                    .expect("Failed to send flags from callback");
-            });
-
-        debug!("Starting screengrab");
-        use zwlr_screencopy_frame_v1::Event;
-        screencopy
-            .capture_output(0, &*output)
-            .quick_assign(move |frame, event, _| match event {
-                Event::Buffer {
-                    format,
-                    width,
-                    height,
-                    stride,
-                } => {
-                    do_copy(frame, format, width, height, stride);
+                    event_queue
+                        .dispatch_pending(&mut (), |_, _, _| unreachable!())
+                        .expect("Dispatch pending events");
                 }
-                Event::BufferDone => {}
-                Event::Ready { .. } => {
-                    do_ready();
-                }
-                Event::Flags { flags } => {
-                    do_flags(flags);
-                }
-                Event::LinuxDmabuf { .. } => {}
-                Event::Failed => panic!("Failed to copy buffer"),
-                ev => panic!("Unexpected event {:?}", ev),
-            });
-
-        let poller = futures::future::poll_fn(|ctx| match self.communicate() {
-            Ok(()) => {
-                ctx.waker().clone().wake();
-                futures::task::Poll::Pending
             }
-            Err(e) => futures::task::Poll::Ready(e),
-        });
+            .into_actor(self),
+        );
+    }
+}
 
-        let waiter = async {
+#[derive(Message)]
+#[rtype(result = "Result<Buffer>")]
+pub struct GrabScreen {
+    pub output_id: u32,
+}
+
+impl Handler<GrabScreen> for Screengrabber {
+    type Result = ResponseFuture<Result<Buffer>>;
+
+    fn handle(
+        &mut self,
+        GrabScreen { output_id }: GrabScreen,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        let screencopy = self.env.require_global::<ZwlrScreencopyManagerV1>();
+        let shm = self.env.require_global::<WlShm>();
+        let outputs = self.env.get_all_globals::<WlOutput>();
+        let display = self.display.clone();
+
+        Box::pin(async move {
+            let output = outputs
+                .into_iter()
+                .find(|o| sctk::output::with_output_info(o, |info| info.id) == Some(output_id))
+                .context("Failed to find Wayland output for monitor")?;
+
+            let transform = sctk::output::with_output_info(&output, |oi| oi.transform)
+                .context("Failed to get window transform state")?;
+
+            let (tx, rx) = futures::channel::oneshot::channel();
+            let (donetx, donerx) = futures::channel::oneshot::channel();
+            let (flagstx, flagsrx) = futures::channel::oneshot::channel();
+            let copydisplay = display.clone();
+            let mut do_copy = crate::utils::CallOnce::new(
+                move |frame: sctk::reexports::client::Main<
+                    zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1,
+                >,
+                      format,
+                      width,
+                      height,
+                      stride| {
+                    let info = BufferInfo {
+                        width,
+                        height,
+                        stride,
+                        format,
+                    };
+                    debug!("Creating buffer with info {:?}", info);
+                    let mut mempool =
+                        sctk::shm::MemPool::new(shm, |_| {}).expect("Failed to create mempool");
+                    mempool
+                        .resize((height * stride) as usize)
+                        .expect("Failed to resize buffer");
+                    let buffer =
+                        mempool.buffer(0, width as i32, height as i32, stride as i32, format);
+                    frame.copy(&buffer);
+                    copydisplay.flush().unwrap();
+
+                    let buf = BufferMempool {
+                        mempool,
+                        info,
+                        transform,
+                        y_invert: false, // Filled in later.
+                    };
+                    tx.send(buf)
+                        .map_err(|_| ())
+                        .expect("Failed to send buffer from callback");
+                },
+            );
+            let mut do_ready = crate::utils::CallOnce::new(move || {
+                debug!("Copy completed");
+                donetx
+                    .send(())
+                    .expect("Failed to signal done from callback");
+            });
+
+            let mut do_flags =
+                crate::utils::CallOnce::new(move |flags: zwlr_screencopy_frame_v1::Flags| {
+                    flagstx
+                        .send(flags)
+                        .expect("Failed to send flags from callback");
+                });
+
+            debug!("Starting screengrab");
+            use zwlr_screencopy_frame_v1::Event;
+            screencopy.capture_output(0, &*output).quick_assign(
+                move |frame, event, _| match event {
+                    Event::Buffer {
+                        format,
+                        width,
+                        height,
+                        stride,
+                    } => {
+                        do_copy(frame, format, width, height, stride);
+                    }
+                    Event::BufferDone => {}
+                    Event::Ready { .. } => {
+                        do_ready();
+                    }
+                    Event::Flags { flags } => {
+                        do_flags(flags);
+                    }
+                    Event::LinuxDmabuf { .. } => {}
+                    Event::Failed => panic!("Failed to copy buffer"),
+                    ev => panic!("Unexpected event {:?}", ev),
+                },
+            );
+            display.flush()?;
+
             debug!("Waiting for screengrab buffer");
             let (buf, flags) = futures::join!(rx, flagsrx);
             let mut buf = buf?;
@@ -221,24 +289,7 @@ impl Screengrabber {
             buf.y_invert = flags.contains(zwlr_screencopy_frame_v1::Flags::YInvert);
             debug!("Waiting for buffer ready");
             donerx.await?;
-            Ok(buf)
-        };
-        futures::pin_mut!(waiter);
-
-        let result: Result<Buffer> = match futures::future::select(poller, waiter).await {
-            futures::future::Either::Left((err, _)) => Err(err),
-            futures::future::Either::Right((buf, _)) => Ok(buf),
-        }?;
-        let buf = result?;
-
-        Ok(buf)
-    }
-
-    pub fn communicate(&mut self) -> Result<()> {
-        debug!("Communicating with Wayland");
-        self.event_queue
-            .sync_roundtrip(&mut (), |_, _, _| unreachable!())
-            .context("Failed to tx/rx with Wayland")?;
-        Ok(())
+            Ok(buf.into())
+        })
     }
 }
