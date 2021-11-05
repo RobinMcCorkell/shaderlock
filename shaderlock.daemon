@@ -1,3 +1,3 @@
 #!/bin/sh
 
-exec systemd-run --user -u shaderlock --service-type=notify shaderlock "$@"
+exec systemd-run --user --collect -u shaderlock --service-type=notify shaderlock "$@"
