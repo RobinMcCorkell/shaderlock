@@ -11,4 +11,7 @@ install: all
 	install -d $(DATADIR)
 	cp -a -t $(DATADIR) dist/*
 
-.PHONY: all install
+clean:
+	cargo clean
+
+.PHONY: all install clean
