@@ -15,7 +15,7 @@ impl Manager {
     pub fn new(shader_file: &std::path::Path, icon_file: &std::path::Path) -> Result<Self> {
         let shader_source =
             std::fs::read_to_string(shader_file).context("Failed to read shader")?;
-        let mut compiler = shaderc::Compiler::new().context("Failed to create shader compiler")?;
+        let compiler = shaderc::Compiler::new().context("Failed to create shader compiler")?;
         let spirv = compiler
             .compile_into_spirv(
                 &shader_source,

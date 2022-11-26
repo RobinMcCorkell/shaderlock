@@ -14,9 +14,27 @@ use log::{debug, error, info, warn};
 
 use sctk::reexports::client as wl;
 
+use clap::Parser;
+
 const DATADIR: &str = env!("DATADIR");
 const SHADER_GLOB: &str = "shaders/*.frag";
 const ICON_FILE: &str = "lock-icon.png";
+
+#[derive(Parser)]
+#[command(version, author, about)]
+struct Args {
+    /// Authentication always succeeds, for testing.
+    #[arg(long, default_value_t = false)]
+    skip_auth: bool,
+
+    /// Shader applied to the lock screen background.
+    #[arg(long, short)]
+    shader_file: Option<String>,
+
+    /// Icon to overlay on the lock screen.
+    #[arg(long, default_value_t = format!("{}/{}", DATADIR, ICON_FILE))]
+    icon_file: String,
+}
 
 fn get_shader_file() -> Result<std::path::PathBuf> {
     use rand::seq::IteratorRandom;
@@ -31,46 +49,23 @@ fn get_shader_file() -> Result<std::path::PathBuf> {
     Ok(file)
 }
 
-fn get_icon_file() -> Result<std::path::PathBuf> {
-    Ok(format!("{}/{}", DATADIR, ICON_FILE).into())
-}
-
 #[actix_rt::main]
 async fn main() -> Result<()> {
     env_logger::init();
 
-    use clap::*;
-    let app = app_from_crate!()
-        .arg(
-            Arg::with_name("skip_auth")
-                .long("skip_auth")
-                .help("Authentication always succeeds, for testing"),
-        )
-        .arg(
-            Arg::with_name("shader")
-                .long("shader")
-                .help("Shader applied to the lock screen background")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("icon")
-                .long("icon")
-                .help("Icon to overlay on the lock screen")
-                .takes_value(true),
-        );
-    let matches = app.get_matches();
+    let args = Args::parse();
 
-    let shader_file = match matches.value_of("shader") {
+    let shader_file = match args.shader_file {
         Some(s) => std::path::PathBuf::from(s),
         None => get_shader_file()?,
     };
-    let icon_file = match matches.value_of("icon") {
-        Some(s) => std::path::PathBuf::from(s),
-        None => get_icon_file()?,
-    };
+    let icon_file = std::path::PathBuf::from(args.icon_file);
 
-    use winit::platform::unix::{EventLoopExtUnix, EventLoopWindowTargetExtUnix};
-    let event_loop = winit::event_loop::EventLoop::<()>::new_wayland();
+    use winit::platform::unix::{EventLoopBuilderExtUnix, EventLoopWindowTargetExtUnix};
+    let event_loop =
+        winit::event_loop::EventLoopBuilder::new()
+            .with_wayland()
+            .build();
     let display = unsafe {
         wl::Display::from_external_display(event_loop.wayland_display().unwrap() as *mut _)
     };
@@ -92,7 +87,7 @@ async fn main() -> Result<()> {
             .context("Failed to add monitor")?;
     }
 
-    let skip_auth = matches.is_present("skip_auth");
+    let skip_auth = args.skip_auth;
 
     locker.with(move |mut lock| {
         sd_notify::notify(true, &[sd_notify::NotifyState::Ready])
@@ -132,8 +127,8 @@ async fn main() -> Result<()> {
                                 *control_flow = ControlFlow::Exit;
                             } else {
                                 match lock.authenticate() {
-                                    Ok(_) => *control_flow = ControlFlow::Exit,
-                                    Err(e) => warn!("Authentication failed: {}", e),
+                                    Result::Ok(_) => *control_flow = ControlFlow::Exit,
+                                    Result::Err(e) => warn!("Authentication failed: {}", e),
                                 };
                             }
                         }
