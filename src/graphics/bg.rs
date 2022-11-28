@@ -130,7 +130,7 @@ impl State {
             mip_level_count: MIPMAP_LEVELS,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: texture_format_from_sctk(screenshot.format()),
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         };
         let texture = device.create_texture(&texture_descriptor);
@@ -154,7 +154,7 @@ impl State {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            screenshot.as_bgra(),
+            screenshot.as_bytes(),
             wgpu::TextureDataLayout {
                 offset: 0,
                 bytes_per_row: stride,
@@ -258,5 +258,15 @@ impl State {
             bytemuck::cast_slice(&[FrameUniforms { time }]),
         );
         rp.draw(0..4, 0..1);
+    }
+}
+
+fn texture_format_from_sctk(f: sctk::shm::Format) -> wgpu::TextureFormat {
+    use sctk::shm::Format::*;
+    use wgpu::TextureFormat::*;
+    match f {
+        Argb8888 | Xrgb8888 => Bgra8UnormSrgb,
+        Xbgr8888 | Abgr8888 => Rgba8UnormSrgb,
+        _ => panic!("Unsupported format: {:?}", f),
     }
 }

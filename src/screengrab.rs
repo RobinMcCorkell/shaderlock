@@ -59,13 +59,9 @@ struct BufferMempool {
 
 impl Into<Buffer> for BufferMempool {
     fn into(mut self) -> Buffer {
-        use sctk::shm::Format::*;
-        if self.info.format != Argb8888 {
-            panic!("Unsupported format: {:?}", self.info.format);
-        }
         debug!("Buffer size = {}", self.mempool.mmap().len());
         Buffer {
-            bgra: self.mempool.mmap().to_owned(),
+            data: self.mempool.mmap().to_owned(),
             info: self.info,
             transform: self.transform,
             y_invert: self.y_invert,
@@ -74,15 +70,15 @@ impl Into<Buffer> for BufferMempool {
 }
 
 pub struct Buffer {
-    bgra: Vec<u8>,
+    data: Vec<u8>,
     info: BufferInfo,
     transform: sctk::output::Transform,
     y_invert: bool,
 }
 
 impl Buffer {
-    pub fn as_bgra(&self) -> &[u8] {
-        &self.bgra
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
     }
 
     pub fn width(&self) -> u32 {
@@ -95,6 +91,10 @@ impl Buffer {
 
     pub fn stride(&self) -> u32 {
         self.info.stride
+    }
+
+    pub fn format(&self) -> sctk::shm::Format {
+        self.info.format
     }
 
     pub fn transform_matrix(&self) -> cgmath::Matrix4<f32> {
