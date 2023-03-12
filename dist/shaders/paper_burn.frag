@@ -10,6 +10,7 @@ layout(set = 0, binding = 2) uniform Uniforms {
 
 layout(push_constant) uniform FrameUniforms {
     float iTime;
+    float iFadeAmount;
 };
 
 const float NOISE_FREQ = 12.0;
@@ -76,4 +77,5 @@ void main() {
     f_color = mix(f_color, SCORCH_COLOR, scorch*SCORCH_MAX);
     f_color = mix(f_color, BURN_COLOR, burn*BURN_MAX);
     f_color = mix(f_color, vec4(0.0, 0.0, 0.0, 0.0), alpha);
+    f_color = mix(f_color, vec4(0.0, 0.0, 0.0, 1.0), iFadeAmount);
 }

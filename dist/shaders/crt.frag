@@ -10,6 +10,7 @@ layout(set = 0, binding = 2) uniform Uniforms {
 
 layout(push_constant) uniform FrameUniforms {
     float iTime;
+    float iFadeAmount;
 };
 
 const float BULGE_AMOUNT = 0.2;
@@ -91,4 +92,5 @@ void main() {
     c = scan_lines(c, uv_monitor);
 
     f_color = c;
+    f_color = mix(f_color, vec4(0.0, 0.0, 0.0, 1.0), iFadeAmount);
 }

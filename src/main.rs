@@ -1,5 +1,6 @@
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
+#![feature(tuple_trait)]
 
 mod graphics;
 mod locker;
@@ -62,10 +63,9 @@ async fn main() -> Result<()> {
     let icon_file = std::path::PathBuf::from(args.icon_file);
 
     use winit::platform::unix::{EventLoopBuilderExtUnix, EventLoopWindowTargetExtUnix};
-    let event_loop =
-        winit::event_loop::EventLoopBuilder::new()
-            .with_wayland()
-            .build();
+    let event_loop = winit::event_loop::EventLoopBuilder::new()
+        .with_wayland()
+        .build();
     let display = unsafe {
         wl::Display::from_external_display(event_loop.wayland_display().unwrap() as *mut _)
     };

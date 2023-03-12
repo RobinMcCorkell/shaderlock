@@ -1,6 +1,8 @@
 mod bg;
 mod icon;
 
+use std::time::Duration;
+
 use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -49,7 +51,7 @@ impl Manager {
         let adapter = self
             .instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::Default,
+                power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: Some(&surface),
             })
             .await
@@ -60,7 +62,7 @@ impl Manager {
                 &wgpu::DeviceDescriptor {
                     features: wgpu::Features::PUSH_CONSTANTS,
                     limits: wgpu::Limits {
-                        max_push_constant_size: 4,
+                        max_push_constant_size: self::bg::PUSH_CONSTANTS_SIZE,
                         ..wgpu::Limits::default()
                     },
                     shader_validation: true,
@@ -132,7 +134,7 @@ impl State {
         self.icon.resize(&self.queue, resolution_transform);
     }
 
-    pub fn render(&mut self, time: f32) {
+    pub fn render(&mut self, ctx: RenderContext) {
         let frame = self
             .swap_chain
             .get_current_frame()
@@ -145,10 +147,15 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        self.bg.render(&mut encoder, &frame, time);
+        self.bg.render(&mut encoder, &frame, ctx);
         self.icon.render(&mut encoder, &frame);
 
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
     }
+}
+
+pub struct RenderContext {
+    pub elapsed: Duration,
+    pub fade_amount: f32,
 }

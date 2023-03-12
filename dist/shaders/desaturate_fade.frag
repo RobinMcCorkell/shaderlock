@@ -10,6 +10,7 @@ layout(set = 0, binding = 2) uniform Uniforms {
 
 layout(push_constant) uniform FrameUniforms {
     float iTime;
+    float iFadeAmount;
 };
 
 const vec3 LUMIN = vec3(0.299, 0.587, 0.114);
@@ -35,4 +36,5 @@ void main() {
 
     vec4 desaturated = desaturate(texture(sampler2D(t_screenshot, s_screenshot), uv), desaturation);
     f_color = mix(desaturated, CLEAR_COLOR, fade);
+    f_color = mix(f_color, vec4(0.0, 0.0, 0.0, 1.0), iFadeAmount);
 }

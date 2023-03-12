@@ -4,6 +4,8 @@ use log::{debug, error, info, warn};
 
 use wgpu::util::DeviceExt;
 
+use super::RenderContext;
+
 pub const VS_MAIN: &str = "main";
 pub const FS_MAIN: &str = "main";
 
@@ -26,10 +28,22 @@ struct UniformsHandle {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct FrameUniforms {
-    time: f32,
+    elapsed: f32,
+    fade_amount: f32,
 }
 unsafe impl bytemuck::Pod for FrameUniforms {}
 unsafe impl bytemuck::Zeroable for FrameUniforms {}
+
+impl From<RenderContext> for FrameUniforms {
+    fn from(ctx: RenderContext) -> Self {
+        Self {
+            elapsed: ctx.elapsed.as_secs_f32(),
+            fade_amount: ctx.fade_amount,
+        }
+    }
+}
+
+pub const PUSH_CONSTANTS_SIZE: u32 = std::mem::size_of::<FrameUniforms>() as u32;
 
 pub struct State {
     pipeline: wgpu::RenderPipeline,
@@ -81,7 +95,7 @@ impl State {
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[wgpu::PushConstantRange {
                 stages: wgpu::ShaderStage::FRAGMENT,
-                range: 0..4,
+                range: 0..PUSH_CONSTANTS_SIZE,
             }],
         });
 
@@ -232,7 +246,7 @@ impl State {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         frame: &wgpu::SwapChainTexture,
-        time: f32,
+        ctx: RenderContext,
     ) {
         let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
@@ -255,7 +269,7 @@ impl State {
         rp.set_push_constants(
             wgpu::ShaderStage::FRAGMENT,
             0,
-            bytemuck::cast_slice(&[FrameUniforms { time }]),
+            bytemuck::cast_slice(&[FrameUniforms::from(ctx)]),
         );
         rp.draw(0..4, 0..1);
     }

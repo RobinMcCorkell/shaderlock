@@ -9,7 +9,11 @@ use winit::event_loop::EventLoop;
 use winit::monitor::*;
 use winit::window::*;
 
+use crate::graphics::RenderContext;
 use crate::screengrab::Screengrabber;
+
+const FREEZE_AFTER_INACTIVITY: std::time::Duration = std::time::Duration::from_secs(10);
+const FADE_BEFORE_FREEZE: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub struct State {
     window: Window,
@@ -21,6 +25,8 @@ pub struct Manager {
     graphics: crate::graphics::Manager,
     state: HashMap<WindowId, State>,
     init_time: std::time::Instant,
+    last_keypress_time: std::time::Instant,
+    frozen: bool,
 }
 
 impl Manager {
@@ -30,6 +36,8 @@ impl Manager {
             graphics,
             state: HashMap::new(),
             init_time: std::time::Instant::now(),
+            last_keypress_time: std::time::Instant::now(),
+            frozen: false,
         }
     }
 
@@ -96,6 +104,10 @@ impl Manager {
                     // new_inner_size is &&mut so we have to dereference it twice
                     graphics.resize(**new_inner_size);
                 }
+                WindowEvent::KeyboardInput { .. } => {
+                    self.last_keypress_time = std::time::Instant::now();
+                    self.frozen = false;
+                }
                 _ => {}
             },
             Event::RedrawRequested(window_id) if self.state.contains_key(&window_id) => {
@@ -105,12 +117,23 @@ impl Manager {
                     .state
                     .get_mut(&window_id)
                     .expect("Missing window ID in state");
-                let time = self.init_time.elapsed().as_secs_f32();
-                graphics.render(time);
+                let ctx = RenderContext {
+                    elapsed: self.init_time.elapsed(),
+                    fade_amount: (self.last_keypress_time.elapsed() + FADE_BEFORE_FREEZE)
+                        .saturating_sub(FREEZE_AFTER_INACTIVITY)
+                        .as_secs_f32()
+                        / FADE_BEFORE_FREEZE.as_secs_f32(),
+                };
+                graphics.render(ctx);
+                if self.last_keypress_time.elapsed() > FREEZE_AFTER_INACTIVITY {
+                    self.frozen = true;
+                }
             }
             Event::MainEventsCleared => {
-                for State { window, .. } in self.state.values() {
-                    window.request_redraw();
+                if !self.frozen {
+                    for State { window, .. } in self.state.values() {
+                        window.request_redraw();
+                    }
                 }
             }
             _ => {}

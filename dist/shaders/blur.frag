@@ -10,6 +10,7 @@ layout(set = 0, binding = 2) uniform Uniforms {
 
 layout(push_constant) uniform FrameUniforms {
     float iTime;
+    float iFadeAmount;
 };
 
 const float AMOUNT = 4.0;
@@ -23,4 +24,5 @@ void main() {
     vec2 uv = ouv.xy / ouv.w;
 
     f_color = texture(sampler2D(t_screenshot, s_screenshot), uv, lod_bias);
+    f_color = mix(f_color, vec4(0.0, 0.0, 0.0, 1.0), iFadeAmount);
 }

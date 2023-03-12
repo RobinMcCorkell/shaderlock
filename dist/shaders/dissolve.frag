@@ -10,10 +10,11 @@ layout(set = 0, binding = 2) uniform Uniforms {
 
 layout(push_constant) uniform FrameUniforms {
     float iTime;
+    float iFadeAmount;
 };
 
 const float DISSOLVE_SPEED = 200;
-const float FALL_ACCEL = 400.0;
+const float FALL_ACCEL = 800.0;
 const float RANDOM_AMOUNT = 0.15;
 const float RANDOM_SIZE = 60.0;
 
@@ -89,4 +90,5 @@ void main() {
     } else {
         f_color = texture(sampler2D(t_screenshot, s_screenshot), uv);
     }
+    f_color = mix(f_color, vec4(0.0, 0.0, 0.0, 1.0), iFadeAmount);
 }

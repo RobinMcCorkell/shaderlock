@@ -10,7 +10,7 @@ impl<F> CallOnce<F> {
 
 impl<F, Args> FnOnce<Args> for CallOnce<F>
 where
-    F: FnOnce<Args>,
+    F: FnOnce<Args>, Args: std::marker::Tuple,
 {
     type Output = Option<F::Output>;
     extern "rust-call" fn call_once(self, args: Args) -> Self::Output {
@@ -20,7 +20,7 @@ where
 
 impl<F, Args> FnMut<Args> for CallOnce<F>
 where
-    F: FnOnce<Args>,
+    F: FnOnce<Args>, Args: std::marker::Tuple,
 {
     extern "rust-call" fn call_mut(&mut self, args: Args) -> Self::Output {
         self.inner.take().map(|f| f.call_once(args))
