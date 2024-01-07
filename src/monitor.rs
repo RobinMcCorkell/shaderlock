@@ -12,9 +12,6 @@ use winit::window::*;
 use crate::graphics::RenderContext;
 use crate::screengrab::Screengrabber;
 
-const FREEZE_AFTER_INACTIVITY: std::time::Duration = std::time::Duration::from_secs(10);
-const FADE_BEFORE_FREEZE: std::time::Duration = std::time::Duration::from_secs(5);
-
 pub struct State {
     window: Window,
     graphics: crate::graphics::State,
@@ -27,13 +24,22 @@ pub struct Manager {
     init_time: std::time::Instant,
     last_keypress_time: std::time::Instant,
     frozen: bool,
+    freeze_fade: std::time::Duration,
+    freeze_timeout: std::time::Duration,
 }
 
 impl Manager {
-    pub fn new(screengrabber: Addr<Screengrabber>, graphics: crate::graphics::Manager) -> Self {
+    pub fn new(
+        screengrabber: Addr<Screengrabber>,
+        graphics: crate::graphics::Manager,
+        freeze_fade: std::time::Duration,
+        freeze_timeout: std::time::Duration,
+    ) -> Self {
         Self {
             screengrabber,
             graphics,
+            freeze_fade,
+            freeze_timeout,
             state: HashMap::new(),
             init_time: std::time::Instant::now(),
             last_keypress_time: std::time::Instant::now(),
@@ -119,13 +125,13 @@ impl Manager {
                     .expect("Missing window ID in state");
                 let ctx = RenderContext {
                     elapsed: self.init_time.elapsed(),
-                    fade_amount: (self.last_keypress_time.elapsed() + FADE_BEFORE_FREEZE)
-                        .saturating_sub(FREEZE_AFTER_INACTIVITY)
+                    fade_amount: (self.last_keypress_time.elapsed() + self.freeze_fade)
+                        .saturating_sub(self.freeze_timeout)
                         .as_secs_f32()
-                        / FADE_BEFORE_FREEZE.as_secs_f32(),
+                        / self.freeze_fade.as_secs_f32(),
                 };
                 graphics.render(ctx);
-                if self.last_keypress_time.elapsed() > FREEZE_AFTER_INACTIVITY {
+                if self.last_keypress_time.elapsed() > self.freeze_timeout {
                     self.frozen = true;
                 }
             }

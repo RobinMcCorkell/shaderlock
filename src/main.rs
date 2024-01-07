@@ -10,16 +10,16 @@ mod utils;
 
 use actix::Actor;
 use anyhow::*;
-#[allow(unused_imports)]
-use log::{debug, error, info, warn};
-
-use sctk::reexports::client as wl;
-
 use clap::Parser;
+use log::{info, warn};
+use sctk::reexports::client as wl;
 
 const DATADIR: &str = env!("DATADIR");
 const SHADER_GLOB: &str = "shaders/*.frag";
 const ICON_FILE: &str = "lock-icon.png";
+
+const DEFAULT_FREEZE_FADE: std::time::Duration = std::time::Duration::from_secs(5);
+const DEFAULT_FREEZE_AFTER_INACTIVITY: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(Parser)]
 #[command(version, author, about)]
@@ -35,6 +35,21 @@ struct Args {
     /// Icon to overlay on the lock screen.
     #[arg(long, default_value_t = format!("{}/{}", DATADIR, ICON_FILE))]
     icon_file: String,
+
+    /// Shader Timeout until Freeze
+    #[arg(long, short, value_parser = parse_duration)]
+    freeze_timeout: Option<std::time::Duration>,
+
+    /// Shader Freeze FadeOut Duration
+    #[arg(long, short, value_parser = parse_duration)]
+    freeze_fade: Option<std::time::Duration>,
+}
+
+fn parse_duration(v: &str) -> std::io::Result<std::time::Duration> {
+    let seconds = v
+        .parse()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    std::result::Result::Ok(std::time::Duration::from_secs(seconds))
 }
 
 fn get_shader_file() -> Result<std::path::PathBuf> {
@@ -79,7 +94,12 @@ async fn main() -> Result<()> {
 
     let mut locker = locker::Locker::new(display.clone()).context("Failed to create locker")?;
 
-    let mut monitor_manager = monitor::Manager::new(screengrabber, graphics_manager);
+    let freeze_fade = args.freeze_fade.unwrap_or(DEFAULT_FREEZE_FADE);
+    let freeze_timeout = args
+        .freeze_timeout
+        .unwrap_or(DEFAULT_FREEZE_AFTER_INACTIVITY);
+    let mut monitor_manager =
+        monitor::Manager::new(screengrabber, graphics_manager, freeze_fade, freeze_timeout);
     for handle in event_loop.available_monitors() {
         monitor_manager
             .add_monitor(&event_loop, handle)
