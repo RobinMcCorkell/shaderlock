@@ -1,10 +1,5 @@
 use std::fs::{read_to_string, write};
 
-const ENV_WITH_DEFAULT: &[(&str, &str)] = &[
-    ("DATADIR", "dist"),
-    ("PAM_SERVICE", "system-auth"),
-];
-
 const RESOURCES: &str = "resources";
 const VERTEX_SHADER_GLOB: &str = "*.vert";
 const VERTEX_SPIRV_EXTENSION: &str = "vert.spv";
@@ -46,11 +41,5 @@ fn main() {
     }
     for file in fragment_shader_files() {
         compile(&mut compiler, &file, shaderc::ShaderKind::Fragment);
-    }
-
-    if std::env::var("PROFILE").unwrap() != "release" {
-        for (var, default) in ENV_WITH_DEFAULT {
-            println!("cargo:rustc-env={}={}", var, default);
-        }
     }
 }
