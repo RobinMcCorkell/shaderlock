@@ -1,14 +1,10 @@
 use anyhow::*;
-#[allow(unused_imports)]
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 
 use sctk::environment::SimpleGlobal;
 use sctk::reexports::client as wl;
-use sctk::reexports::{
-    protocols::wlr::unstable::input_inhibitor::v1::client::zwlr_input_inhibit_manager_v1::ZwlrInputInhibitManagerV1,
-};
+use sctk::reexports::protocols::wlr::unstable::input_inhibitor::v1::client::zwlr_input_inhibit_manager_v1::ZwlrInputInhibitManagerV1;
 
-const PAM_SERVICE: &str = env!("PAM_SERVICE");
 const PASSWORD_SIZE: usize = 256;
 
 struct WaylandEnv {
@@ -84,8 +80,9 @@ pub struct LockContext<'a> {
 
 impl<'a> LockContext<'a> {
     fn new() -> Result<Self> {
+        let pam_svc = std::env::var("PAM_SERVICE").unwrap_or_else(|_| "systemd-auth".to_owned());
         let auth =
-            pam::Authenticator::with_password(PAM_SERVICE).context("Failed to initialize PAM")?;
+            pam::Authenticator::with_password(&pam_svc).context("Failed to initialize PAM")?;
         let username = users::get_current_username()
             .context("Failed to get username")?
             .into_string()

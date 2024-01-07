@@ -1,7 +1,6 @@
-PREFIX = $(HOME)/.local
-BINDIR = $(PREFIX)/bin
-export DATADIR = $(PREFIX)/share/shaderlock
-export PAM_SERVICE = system-auth
+PREFIX  = $(HOME)/.local
+BINDIR  = $(PREFIX)/bin
+DATADIR = $(PREFIX)/share/shaderlock
 
 all: shaderlock.daemon dist
 	cargo build --release

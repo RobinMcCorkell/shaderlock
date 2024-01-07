@@ -17,7 +17,6 @@ use sctk::reexports::client as wl;
 
 use clap::Parser;
 
-const DATADIR: &str = env!("DATADIR");
 const SHADER_GLOB: &str = "shaders/*.frag";
 const ICON_FILE: &str = "lock-icon.png";
 
@@ -33,14 +32,22 @@ struct Args {
     shader_file: Option<String>,
 
     /// Icon to overlay on the lock screen.
-    #[arg(long, default_value_t = format!("{}/{}", DATADIR, ICON_FILE))]
-    icon_file: String,
+    #[arg(long, short)]
+    icon_file: Option<String>,
+}
+
+fn datadir() -> std::path::PathBuf {
+    if let std::result::Result::Ok(dir) = std::env::var("SHADERS_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    let dirs = xdg::BaseDirectories::with_prefix("shaderlock").unwrap();
+    dirs.get_data_home()
 }
 
 fn get_shader_file() -> Result<std::path::PathBuf> {
     use rand::seq::IteratorRandom;
     let mut rng = rand::thread_rng();
-    let file = glob::glob(&format!("{}/{}", DATADIR, SHADER_GLOB))
+    let file = glob::glob(&format!("{}/{}", datadir().to_string_lossy(), SHADER_GLOB))
         .expect("Failed to parse shader file glob")
         .choose(&mut rng)
         .context("Failed to randomly pick a shader file")?
@@ -60,8 +67,10 @@ async fn main() -> Result<()> {
         Some(s) => std::path::PathBuf::from(s),
         None => get_shader_file()?,
     };
-    let icon_file = std::path::PathBuf::from(args.icon_file);
-
+    let icon_file = match args.icon_file {
+        Some(icon) => std::path::PathBuf::from(icon),
+        None => datadir().join(ICON_FILE),
+    };
     use winit::platform::unix::{EventLoopBuilderExtUnix, EventLoopWindowTargetExtUnix};
     let event_loop = winit::event_loop::EventLoopBuilder::new()
         .with_wayland()

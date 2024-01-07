@@ -30,6 +30,7 @@ wgpu-mipmap = "0.1.0"
 actix = "0.13.0"
 actix-rt = "2.2.0"
 tokio = "1.9.0"
+xdg = "2.5.2"
 
 [build-dependencies]
 shaderc = "0.8.0"
