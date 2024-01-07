@@ -41,7 +41,7 @@ struct Args {
     freeze_timeout: Option<std::time::Duration>,
 
     /// Shader Freeze FadeOut Duration
-    #[arg(long, short, value_parser = parse_duration)]
+    #[arg(long, value_parser = parse_duration)]
     freeze_fade: Option<std::time::Duration>,
 }
 
