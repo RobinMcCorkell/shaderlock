@@ -2,10 +2,9 @@ use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
-use actix::prelude::*;
-
 use std::collections::HashMap;
-use winit::event_loop::EventLoop;
+use std::sync::Arc;
+use winit::event::*;
 use winit::monitor::*;
 use winit::window::*;
 
@@ -16,12 +15,12 @@ const FREEZE_AFTER_INACTIVITY: std::time::Duration = std::time::Duration::from_s
 const FADE_BEFORE_FREEZE: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub struct State {
-    window: Window,
-    graphics: crate::graphics::State,
+    window: Arc<Window>,
+    graphics: crate::graphics::State<'static>,
 }
 
 pub struct Manager {
-    screengrabber: Addr<Screengrabber>,
+    screengrabber: Screengrabber,
     graphics: crate::graphics::Manager,
     state: HashMap<WindowId, State>,
     init_time: std::time::Instant,
@@ -30,7 +29,7 @@ pub struct Manager {
 }
 
 impl Manager {
-    pub fn new(screengrabber: Addr<Screengrabber>, graphics: crate::graphics::Manager) -> Self {
+    pub fn new(screengrabber: Screengrabber, graphics: crate::graphics::Manager) -> Self {
         Self {
             screengrabber,
             graphics,
@@ -41,102 +40,77 @@ impl Manager {
         }
     }
 
-    pub async fn add_monitor<EventT>(
-        &mut self,
-        event_loop: &EventLoop<EventT>,
-        handle: MonitorHandle,
-    ) -> Result<()> {
-        use winit::platform::unix::MonitorHandleExtUnix;
+    pub async fn add_monitor(&mut self, handle: MonitorHandle, window: Window) -> Result<()> {
+        use winit::platform::wayland::MonitorHandleExtWayland;
         debug!("Grabbing screen on {:?}", handle.name());
         let frame = self
             .screengrabber
-            .send(crate::screengrab::GrabScreen {
-                output_id: handle.native_id(),
-            })
+            .grab_screen(handle.native_id())
             .await
-            .context("Failed to send grab screen request")?
-            .context("Failed to grab screen")?;
-
-        debug!("Creating window on {:?}", handle.name());
-        let window = WindowBuilder::new()
-            .with_fullscreen(Some(Fullscreen::Borderless(Some(handle.clone()))))
-            .build(event_loop)
-            .context("Failed to build window")?;
-
-        window.set_cursor_visible(false);
+            .expect("Failed to grab screen");
 
         debug!("Initialising graphics on {:?}", window.id());
+        let windowrc = Arc::new(window);
         let graphics = self
             .graphics
-            .init_window(&window, frame)
+            .init_window(windowrc.clone(), frame)
             .await
-            .context("Failed to create graphics context")?;
+            .expect("Init window");
 
-        debug!("Added window {:?} on {:?}", window.id(), handle.name());
-        self.state.insert(window.id(), State { window, graphics });
+        debug!("Added window {:?} on {:?}", windowrc.id(), handle.name());
+
+        self.state.insert(
+            windowrc.id(),
+            State {
+                graphics,
+                window: windowrc,
+            },
+        );
 
         Ok(())
     }
 
-    pub fn handle_event<EventT>(&mut self, event: winit::event::Event<EventT>) {
-        use winit::event::*;
-        match event {
-            Event::WindowEvent {
-                ref event,
-                window_id,
-            } if self.state.contains_key(&window_id) => match event {
-                WindowEvent::Resized(physical_size) => {
-                    let State {
-                        ref mut graphics, ..
-                    } = self
-                        .state
-                        .get_mut(&window_id)
-                        .expect("Missing window ID in state");
-                    graphics.resize(*physical_size);
-                }
-                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                    let State {
-                        ref mut graphics, ..
-                    } = self
-                        .state
-                        .get_mut(&window_id)
-                        .expect("Missing window ID in state");
-                    // new_inner_size is &&mut so we have to dereference it twice
-                    graphics.resize(**new_inner_size);
-                }
-                WindowEvent::KeyboardInput { .. } => {
-                    self.last_keypress_time = std::time::Instant::now();
-                    self.frozen = false;
-                }
-                _ => {}
-            },
-            Event::RedrawRequested(window_id) if self.state.contains_key(&window_id) => {
+    pub fn handle_event(&mut self, window_id: WindowId, event: WindowEvent) -> Result<()> {
+        match self.state.get_mut(&window_id) {
+            None => Ok(()),
+            Some(state) => {
                 let State {
-                    ref mut graphics, ..
-                } = self
-                    .state
-                    .get_mut(&window_id)
-                    .expect("Missing window ID in state");
-                let ctx = RenderContext {
-                    elapsed: self.init_time.elapsed(),
-                    fade_amount: (self.last_keypress_time.elapsed() + FADE_BEFORE_FREEZE)
-                        .saturating_sub(FREEZE_AFTER_INACTIVITY)
-                        .as_secs_f32()
-                        / FADE_BEFORE_FREEZE.as_secs_f32(),
-                };
-                graphics.render(ctx);
-                if self.last_keypress_time.elapsed() > FREEZE_AFTER_INACTIVITY {
-                    self.frozen = true;
-                }
-            }
-            Event::MainEventsCleared => {
-                if !self.frozen {
-                    for State { window, .. } in self.state.values() {
-                        window.request_redraw();
+                    ref mut graphics,
+                    ref window,
+                } = *state;
+
+                match event {
+                    WindowEvent::Resized(physical_size) => {
+                        graphics.resize(physical_size);
                     }
+                    // WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                    //     // new_inner_size is &&mut so we have to dereference it twice
+                    //     graphics.resize(**new_inner_size);
+                    // }
+                    WindowEvent::KeyboardInput { .. } => {
+                        self.last_keypress_time = std::time::Instant::now();
+                        self.frozen = false;
+                    }
+                    WindowEvent::RedrawRequested => {
+                        let ctx = RenderContext {
+                            elapsed: self.init_time.elapsed(),
+                            fade_amount: (self.last_keypress_time.elapsed() + FADE_BEFORE_FREEZE)
+                                .saturating_sub(FREEZE_AFTER_INACTIVITY)
+                                .as_secs_f32()
+                                / FADE_BEFORE_FREEZE.as_secs_f32(),
+                        };
+                        let frame = graphics.render(ctx);
+                        window.pre_present_notify();
+                        frame.present();
+
+                        if self.last_keypress_time.elapsed() < FREEZE_AFTER_INACTIVITY {
+                            window.request_redraw();
+                        }
+                    }
+                    _ => {}
                 }
+                Ok(())
             }
-            _ => {}
         }
     }
 }

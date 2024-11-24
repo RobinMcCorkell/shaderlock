@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -51,9 +53,9 @@ impl Locker {
         Ok(Self { event_queue, env })
     }
 
-    pub fn with<F, O>(&mut self, f: F) -> Result<O>
+    pub async fn with<Fut, O>(&mut self, f: impl FnOnce(LockContext<'static>) -> Fut) -> Result<O>
     where
-        F: FnOnce(LockContext<'static>) -> O,
+        Fut: Future<Output = O>,
     {
         debug!("Starting input inhibitor");
         let input_inhibit_manager = self.env.require_global::<ZwlrInputInhibitManagerV1>();
@@ -61,7 +63,7 @@ impl Locker {
 
         self.communicate()?;
 
-        Ok(f(LockContext::new()?))
+        Ok(f(LockContext::new()?).await)
     }
 
     pub fn communicate(&mut self) -> Result<()> {

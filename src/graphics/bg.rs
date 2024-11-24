@@ -9,8 +9,6 @@ use super::RenderContext;
 pub const VS_MAIN: &str = "main";
 pub const FS_MAIN: &str = "main";
 
-const MIPMAP_LEVELS: u32 = 8;
-
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct Uniforms {
@@ -56,32 +54,33 @@ impl State {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         swapchain_format: wgpu::TextureFormat,
-        shader: wgpu::ShaderModuleSource,
+        shader: wgpu::ShaderSource,
         screenshot: crate::screengrab::Buffer,
     ) -> Result<Self> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::SampledTexture {
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
-                        dimension: wgpu::TextureViewDimension::D2,
-                        component_type: wgpu::TextureComponentType::Uint,
                     },
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler { comparison: false },
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::UniformBuffer {
-                        dynamic: false,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
                         min_binding_size: None,
                     },
                     count: None,
@@ -94,7 +93,7 @@ impl State {
             label: Some("BG Render pipeline layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[wgpu::PushConstantRange {
-                stages: wgpu::ShaderStage::FRAGMENT,
+                stages: wgpu::ShaderStages::FRAGMENT,
                 range: 0..PUSH_CONSTANTS_SIZE,
             }],
         });
@@ -102,50 +101,53 @@ impl State {
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("BG Render pipeline"),
             layout: Some(&pipeline_layout),
-            vertex_stage: wgpu::ProgrammableStageDescriptor {
+            vertex: wgpu::VertexState {
                 module: &device
                     .create_shader_module(wgpu::include_spirv!("../../resources/bg.vert.spv")),
                 entry_point: VS_MAIN,
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
-            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                module: &device.create_shader_module(shader),
+            fragment: Some(wgpu::FragmentState {
+                module: &device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("shader"), source: shader }),
                 entry_point: FS_MAIN,
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: swapchain_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
-            rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: wgpu::CullMode::None,
-                ..wgpu::RasterizationStateDescriptor::default()
-            }),
-            primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
-            color_states: &[wgpu::ColorStateDescriptor {
-                format: swapchain_format,
-                color_blend: wgpu::BlendDescriptor::REPLACE,
-                alpha_blend: wgpu::BlendDescriptor::REPLACE,
-                write_mask: wgpu::ColorWrite::ALL,
-            }],
-            depth_stencil_state: None,
-            vertex_state: wgpu::VertexStateDescriptor {
-                index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[],
+                cull_mode: None,
+                ..Default::default()
             },
-            sample_count: 1,
-            sample_mask: !0,
-            alpha_to_coverage_enabled: false,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            depth_stencil: None,
+            multiview: None,
+            cache: None,
         });
 
         let texture_size = wgpu::Extent3d {
             width: screenshot.width(),
             height: screenshot.height(),
-            depth: 1,
+            depth_or_array_layers: 1,
         };
         let texture_descriptor = wgpu::TextureDescriptor {
             label: Some("Screenshot"),
             size: texture_size,
-            mip_level_count: MIPMAP_LEVELS,
+            mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: texture_format_from_sctk(screenshot.format()),
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
         };
         let texture = device.create_texture(&texture_descriptor);
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -163,29 +165,24 @@ impl State {
         let height = screenshot.height();
         let width = screenshot.width();
         queue.write_texture(
-            wgpu::TextureCopyView {
+            wgpu::ImageCopyTexture {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
             },
             screenshot.as_bytes(),
-            wgpu::TextureDataLayout {
+            wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: stride,
-                rows_per_image: height,
+                bytes_per_row: Some(stride),
+                rows_per_image: Some(height),
             },
             wgpu::Extent3d {
-                width: width,
-                height: height,
-                depth: 1,
+                width,
+                height,
+                depth_or_array_layers: 1,
             },
         );
-
-        use wgpu_mipmap::MipmapGenerator;
-        let mipmap_generator = wgpu_mipmap::RecommendedMipmapGenerator::new(&device);
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        mipmap_generator.generate(&device, &mut encoder, &texture, &texture_descriptor)?;
-        queue.submit(std::iter::once(encoder.finish()));
 
         let texture_transform =
             cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.5, 0.5, 0.0))
@@ -198,7 +195,7 @@ impl State {
         let uniforms_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniforms Buffer"),
             contents: bytemuck::cast_slice(&[uniforms]),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -214,7 +211,7 @@ impl State {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Buffer(uniforms_buffer.slice(..)),
+                    resource: uniforms_buffer.as_entire_binding(),
                 },
             ],
             label: Some("bg bind group"),
@@ -222,7 +219,7 @@ impl State {
 
         let uniforms_handle = UniformsHandle {
             data: uniforms,
-            texture_transform: texture_transform,
+            texture_transform,
             buffer: uniforms_buffer,
         };
 
@@ -245,12 +242,13 @@ impl State {
     pub fn render(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
-        frame: &wgpu::SwapChainTexture,
+        view: &wgpu::TextureView,
         ctx: RenderContext,
     ) {
         let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: &frame.view,
+            label: Some("BG render pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -259,15 +257,17 @@ impl State {
                         b: 0.0,
                         a: 1.0,
                     }),
-                    store: true,
+                    store: wgpu::StoreOp::Store,
                 },
-            }],
+            })],
             depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
         rp.set_pipeline(&self.pipeline);
         rp.set_bind_group(0, &self.bind_group, &[]); // NEW!
         rp.set_push_constants(
-            wgpu::ShaderStage::FRAGMENT,
+            wgpu::ShaderStages::FRAGMENT,
             0,
             bytemuck::cast_slice(&[FrameUniforms::from(ctx)]),
         );
