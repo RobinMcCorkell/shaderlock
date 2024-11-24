@@ -13,7 +13,7 @@ pub fn run<Item>(
 where
     Item: Send + 'static,
 {
-    let (tx, rx) = tokio::sync::mpsc::channel(0);
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
 
     thread::spawn(move || {
         let event_loop = init();

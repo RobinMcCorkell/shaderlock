@@ -100,6 +100,7 @@ async fn main() -> Result<()> {
                                     Fullscreen::Borderless(Some(handle.clone())),
                                 ));
                                 let window = event_loop.create_window(attrs).unwrap();
+                                debug!("Created window: {:?}", window.id());
                                 window.set_cursor_visible(false);
 
                                 Monitor { handle, window }
@@ -117,7 +118,7 @@ async fn main() -> Result<()> {
                         Some(Event::Init { monitors, display })
                     }
                     winit::event::Event::WindowEvent { window_id, event } => {
-                        info!("window event: {:?}", event);
+                        info!("window event: {:?} {:?}", window_id, event);
                         Some(Event::WindowEvent(window_id, event))
                     }
                     _ => None,
@@ -142,6 +143,7 @@ async fn main() -> Result<()> {
             let mut monitor_manager = monitor::Manager::new(screengrabber, graphics_manager);
             let skip_auth = args.skip_auth;
 
+            debug!("Adding monitors to monitor manager");
             for Monitor { handle, window } in monitors {
                 monitor_manager
                     .add_monitor(handle, window)

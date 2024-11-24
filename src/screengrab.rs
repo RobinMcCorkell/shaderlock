@@ -1,4 +1,3 @@
-
 use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -110,7 +109,10 @@ impl Buffer {
             };
         let flip = matches!(
             self.transform,
-            Transform::Flipped | Transform::Flipped90 | Transform::Flipped180 | Transform::Flipped270
+            Transform::Flipped
+                | Transform::Flipped90
+                | Transform::Flipped180
+                | Transform::Flipped270
         ) ^ self.y_invert;
         Matrix4::from_angle_z(angle)
             * Matrix4::from_nonuniform_scale(if flip { -1.0 } else { 1.0 }, 1.0, 1.0)
@@ -138,27 +140,27 @@ impl Screengrabber {
         debug!("Spawning screengrab event dispatch");
         spawn_local(async move {
             loop {
+                debug!("awaiting socket readiness");
                 let mut rg = fd.readable().await.unwrap();
                 rg.clear_ready();
-                debug!("Dispatching screengrab events");
-                if let Some(guard) = event_queue.prepare_read() {
-                    if let Err(e) = guard.read_events() {
-                        if e.kind() != std::io::ErrorKind::WouldBlock {
-                            todo!();
-                        }
-                    }
-                }
+                // if let Some(guard) = event_queue.prepare_read() {
+                //     debug!("reading events");
+                //     if let Err(e) = guard.read_events() {
+                //         if e.kind() != std::io::ErrorKind::WouldBlock {
+                //             continue;
+                //         }
+                //     }
+                // }
 
+                debug!("dispatching screengrab events");
                 event_queue
                     .dispatch_pending(&mut (), |_, _, _| unreachable!())
                     .expect("Dispatch pending events");
+                debug!("dispatch complete");
             }
         });
 
-        Ok(Self {
-            display,
-            env,
-        })
+        Ok(Self { display, env })
     }
 
     pub async fn grab_screen(&self, output_id: u32) -> Result<Buffer> {
@@ -183,10 +185,10 @@ impl Screengrabber {
             move |frame: sctk::reexports::client::Main<
                 zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1,
             >,
-                    format,
-                    width,
-                    height,
-                    stride| {
+                  format,
+                  width,
+                  height,
+                  stride| {
                 let info = BufferInfo {
                     width,
                     height,
@@ -199,8 +201,7 @@ impl Screengrabber {
                 mempool
                     .resize((height * stride) as usize)
                     .expect("Failed to resize buffer");
-                let buffer =
-                    mempool.buffer(0, width as i32, height as i32, stride as i32, format);
+                let buffer = mempool.buffer(0, width as i32, height as i32, stride as i32, format);
                 frame.copy(&buffer);
                 copydisplay.flush().unwrap();
 
@@ -231,8 +232,9 @@ impl Screengrabber {
 
         debug!("Starting screengrab");
         use zwlr_screencopy_frame_v1::Event;
-        screencopy.capture_output(0, &output).quick_assign(
-            move |frame, event, _| match event {
+        screencopy
+            .capture_output(0, &output)
+            .quick_assign(move |frame, event, _| match event {
                 Event::Buffer {
                     format,
                     width,
@@ -251,8 +253,7 @@ impl Screengrabber {
                 Event::LinuxDmabuf { .. } => {}
                 Event::Failed => panic!("Failed to copy buffer"),
                 ev => panic!("Unexpected event {:?}", ev),
-            },
-        );
+            });
         display.flush()?;
 
         debug!("Waiting for screengrab buffer");

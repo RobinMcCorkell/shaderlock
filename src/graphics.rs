@@ -50,7 +50,9 @@ impl Manager {
     ) -> Result<State<'static>> {
         let size = window.inner_size();
 
+        debug!("creating surface on {:?}", window.id());
         let surface = self.instance.create_surface(window).context("Failed to create surface")?;
+        debug!("requesting adapter");
         let adapter = self
             .instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -61,6 +63,7 @@ impl Manager {
             .await
             .context("Failed to get graphics adapter")?;
 
+        debug!("requesting device");
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
