@@ -12,14 +12,13 @@ env_logger = "0.11.5"
 log = "0.4.11"
 wgpu = { version = "22.1.0", features = ["spirv"] }
 futures = "0.3.8"
-sctk = { package = "smithay-client-toolkit", version = "0.16.1" }
+sctk = { package = "smithay-client-toolkit", version = "0.19.2" }
 cgmath = "0.18.0"
 bytemuck = "1.4.1"
 shaderc = "0.8.0"
 glob = "0.3.0"
 rand = "0.8.4"
 anyhow = "1.0.34"
-image = "0.25.2"
 pam = "0.7.0"
 users = "0.11.0"
 arrayvec = "0.7.2"
@@ -28,6 +27,8 @@ clap = { version = "4.5.20", features = ["derive"] }
 tokio = { version = "1.9.0", features = ["full"] }
 pollster = "0.4.0"
 dashmap = "6.1.0"
+either = "1.13.0"
+image = "0.25.5"
 
 [build-dependencies]
 shaderc = "0.8.0"

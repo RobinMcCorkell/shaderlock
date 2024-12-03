@@ -1,11 +1,12 @@
 mod bg;
 mod icon;
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
+use wgpu::SurfaceTarget;
 
 pub struct Manager {
     instance: wgpu::Instance,
@@ -43,15 +44,16 @@ impl Manager {
         })
     }
 
-    pub async fn init_window(
+    pub async fn init_window<'window>(
         &self,
-        window: Arc<winit::window::Window>,
-        screenshot: crate::screengrab::Buffer,
-    ) -> Result<State<'static>> {
-        let size = window.inner_size();
-
-        debug!("creating surface on {:?}", window.id());
-        let surface = self.instance.create_surface(window).context("Failed to create surface")?;
+        window: impl Into<SurfaceTarget<'window>>,
+        screenshot: crate::screencopy::ScreencopyBuffer,
+        (width, height): (u32, u32),
+    ) -> Result<State<'window>> {
+        let surface = self
+            .instance
+            .create_surface(window)
+            .context("Failed to create surface")?;
         debug!("requesting adapter");
         let adapter = self
             .instance
@@ -83,8 +85,8 @@ impl Manager {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            width: size.width,
-            height: size.height,
+            width,
+            height,
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
@@ -110,7 +112,7 @@ impl Manager {
             icon,
         };
 
-        me.resize(size);
+        me.resize((width, height));
         Ok(me)
     }
 }
@@ -125,24 +127,26 @@ pub struct State<'window> {
 }
 
 impl State<'_> {
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        self.surface_config.width = new_size.width;
-        self.surface_config.height = new_size.height;
+    pub fn resize(&mut self, (width, height): (u32, u32)) {
+        self.surface_config.width = width;
+        self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
 
-        let resolution_transform = cgmath::Matrix4::from_nonuniform_scale(
-            1.0 / new_size.width as f32,
-            1.0 / new_size.height as f32,
-            1.0,
-        );
+        let resolution_transform =
+            cgmath::Matrix4::from_nonuniform_scale(1.0 / width as f32, 1.0 / height as f32, 1.0);
 
         self.bg.resize(&self.queue, resolution_transform);
         self.icon.resize(&self.queue, resolution_transform);
     }
 
     pub fn render(&mut self, ctx: RenderContext) -> wgpu::SurfaceTexture {
-        let frame = self.surface.get_current_texture().expect("Timeout getting texture");
-        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let frame = self
+            .surface
+            .get_current_texture()
+            .expect("Timeout getting texture");
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self
             .device

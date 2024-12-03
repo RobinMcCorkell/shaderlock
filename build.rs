@@ -1,9 +1,6 @@
 use std::fs::{read_to_string, write};
 
-const ENV_WITH_DEFAULT: &[(&str, &str)] = &[
-    ("DATADIR", "dist"),
-    ("PAM_SERVICE", "system-auth"),
-];
+const ENV_WITH_DEFAULT: &[(&str, &str)] = &[("DATADIR", "dist"), ("PAM_SERVICE", "system-auth")];
 
 const RESOURCES: &str = "resources";
 const VERTEX_SHADER_GLOB: &str = "*.vert";

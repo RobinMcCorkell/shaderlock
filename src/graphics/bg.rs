@@ -2,7 +2,10 @@ use anyhow::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
+use sctk::reexports::client::protocol::wl_shm::Format;
 use wgpu::util::DeviceExt;
+
+use crate::screencopy::ScreencopyBuffer;
 
 use super::RenderContext;
 
@@ -50,12 +53,12 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(
+    pub fn new<'buffer>(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         swapchain_format: wgpu::TextureFormat,
         shader: wgpu::ShaderSource,
-        screenshot: crate::screengrab::Buffer,
+        screenshot: ScreencopyBuffer,
     ) -> Result<Self> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -109,7 +112,10 @@ impl State {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module: &device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("shader"), source: shader }),
+                module: &device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("shader"),
+                    source: shader,
+                }),
                 entry_point: FS_MAIN,
                 targets: &[Some(wgpu::ColorTargetState {
                     format: swapchain_format,
@@ -171,7 +177,7 @@ impl State {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            screenshot.as_bytes(),
+            screenshot.bytes(),
             wgpu::ImageDataLayout {
                 offset: 0,
                 bytes_per_row: Some(stride),
@@ -275,9 +281,9 @@ impl State {
     }
 }
 
-fn texture_format_from_sctk(f: sctk::shm::Format) -> wgpu::TextureFormat {
-    use sctk::shm::Format::*;
+fn texture_format_from_sctk(f: Format) -> wgpu::TextureFormat {
     use wgpu::TextureFormat::*;
+    use Format::*;
     match f {
         Argb8888 | Xrgb8888 => Bgra8UnormSrgb,
         Xbgr8888 | Abgr8888 => Rgba8UnormSrgb,
