@@ -39,11 +39,13 @@ pub trait ScreencopyHandler: Sized {
 
     fn screencopy_state(&mut self) -> &mut ScreencopyState;
 
+    /// Create an SHM buffer to which Wayland can write the screenshot.
     fn create_buffer(
         &mut self,
         info: &BufferInfo,
     ) -> Result<Self::ShmBuffer, Self::CreateBufferError>;
 
+    /// Get the raw buffer bytes for a screenshot buffer.
     fn get_buffer_data(
         &mut self,
         handle: ScreencopyBufferHandle<Self::ShmBuffer>,
@@ -60,6 +62,7 @@ impl ScreencopyState {
     where
         D: Dispatch<zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, GlobalData> + 'static,
     {
+        // Version 3 of the screencopy protocol sends the BufferDone event.
         let manager = GlobalProxy::from(globals.bind(qh, 3..=3, GlobalData));
         Self { manager }
     }
@@ -161,6 +164,7 @@ where
     ) {
         debug!("got screencopy event: {:?}", event);
         match event {
+            // Step 1: one or more Buffer events inform the client of available buffer formats.
             zwlr_screencopy_frame_v1::Event::Buffer {
                 format: WEnum::Value(format),
                 width,
@@ -174,11 +178,26 @@ where
                     format,
                 });
             }
+            // Step 1b: zero or more LinuxDmabuf events inform the client of available DMA buffer formats.
+            zwlr_screencopy_frame_v1::Event::LinuxDmabuf { .. } => {}
+            // Step 2: one Flags event informs the client of any flags.
             zwlr_screencopy_frame_v1::Event::Flags {
                 flags: WEnum::Value(flags),
             } => {
                 data.flags.lock().unwrap().replace(flags);
             }
+            // Step 3: one BufferDone event informs the client all Buffer events have been sent,
+            // and the client should start a copy.
+            zwlr_screencopy_frame_v1::Event::BufferDone => {
+                let info_guard = data.info.lock().unwrap();
+                let info = info_guard.as_ref().unwrap();
+                debug!("Creating buffer with info {:?}", info);
+                let buffer = state.create_buffer(info).unwrap();
+                proxy.copy(buffer.wl_buffer());
+                conn.flush().unwrap();
+                data.buffer.lock().unwrap().replace(buffer);
+            }
+            // Step 4: one Ready event informs the client the copy is successful.
             zwlr_screencopy_frame_v1::Event::Ready { .. } => {
                 let info = data.info.lock().unwrap().take().unwrap();
                 let flags = data.flags.lock().unwrap().take().unwrap();
@@ -198,6 +217,7 @@ where
                     .send(Ok(handle))
                     .unwrap();
             }
+            // Step 4b: one Failed event informs the client the copy has failed.
             zwlr_screencopy_frame_v1::Event::Failed => {
                 data.on_done
                     .lock()
@@ -208,16 +228,6 @@ where
                     .unwrap();
             }
             zwlr_screencopy_frame_v1::Event::Damage { .. } => unimplemented!(),
-            zwlr_screencopy_frame_v1::Event::LinuxDmabuf { .. } => {}
-            zwlr_screencopy_frame_v1::Event::BufferDone => {
-                let info_guard = data.info.lock().unwrap();
-                let info = info_guard.as_ref().unwrap();
-                debug!("Creating buffer with info {:?}", info);
-                let buffer = state.create_buffer(info).unwrap();
-                proxy.copy(buffer.wl_buffer());
-                conn.flush().unwrap();
-                data.buffer.lock().unwrap().replace(buffer);
-            }
             _ => unimplemented!(),
         }
     }

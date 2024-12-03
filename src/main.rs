@@ -103,6 +103,7 @@ async fn main() -> Result<()> {
 
             wm.run(|conn, qh, mut state, events| async move {
                 let outputs: Vec<_> = state.access(|s| s.output_state.outputs().collect());
+                // Screenshot capture must happen before the session lock else we will just get a black screen.
                 for output in outputs {
                     let frame_handle = state
                         .access(|s| {
@@ -118,6 +119,7 @@ async fn main() -> Result<()> {
                     frame_by_output.insert(output.id(), frame);
                 }
 
+                // From this point onwards, the compositor will blank the screen and inhibit input to apps.
                 let session_lock = state.access(|s| s.session_lock_state.lock(qh))?;
                 sd_notify::notify(true, &[sd_notify::NotifyState::Ready])
                     .context("Failed to notify readiness")?;
@@ -146,6 +148,7 @@ async fn main() -> Result<()> {
                         Event::ConfigureLockSurface(lock_surface, (width, height)) => {
                             let surface = lock_surface.wl_surface();
                             let output = output_by_surface.get(&surface.id()).unwrap();
+                            // TODO: if a new monitor is plugged in there won't be a screenshot.
                             let frame = frame_by_output.remove(&output.id()).unwrap();
 
                             let window = Window {
@@ -161,6 +164,8 @@ async fn main() -> Result<()> {
 
                             graphics_by_surface.insert(surface.id(), graphics);
 
+                            // Trigger the first draw. Requesting a frame event from Wayland doesn't seem to work,
+                            // I think that only works after the first commit.
                             state.access(|s| s.queue_redraw(lock_surface.wl_surface().clone()));
                         }
                         Event::RedrawRequested(surface) => {
@@ -197,6 +202,8 @@ async fn main() -> Result<()> {
                             }
                         }
                         Event::KeyPressed(key_event) => {
+                            // Sway will only attach input events after the first buffer is committed to a
+                            // lock surface, so we will only start getting KeyPressed events after the first render.
                             last_keypress_time = std::time::Instant::now();
                             match key_event {
                                 KeyEvent {
@@ -215,6 +222,8 @@ async fn main() -> Result<()> {
                                     keysym: Keysym::Return | Keysym::KP_Enter | Keysym::ISO_Enter,
                                     ..
                                 } => {
+                                    // Note that a Return keypress also has utf8 data "\r", so match this before
+                                    // the text arm.
                                     match auth.authenticate() {
                                         Result::Ok(_) => {
                                             session_lock.unlock();

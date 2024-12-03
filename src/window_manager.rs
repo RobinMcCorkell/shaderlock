@@ -116,6 +116,11 @@ impl WindowManager {
         })
     }
 
+    /// Run the event loop with a provided handler task.
+    ///
+    /// The funky lifetime annotations declare the references passed to the handler function
+    /// to live as long as the original reference to the `WindowManager` itself, which are
+    /// necessary since the handler function returns a `Future` that captures those references.
     pub async fn run<'a, Fut>(
         &'a mut self,
         f: impl FnOnce(
@@ -136,6 +141,13 @@ impl WindowManager {
             loop {
                 debug!("flushing event queue");
                 event_queue.flush().unwrap();
+
+                // The Wayland docs say that we should poll while holding a prepared read guard,
+                // but this deadlocks against wgpu since the wl_display (aka wl::Connection) expects
+                // to be read once per thread, and cannot synchronize multiple prepared reads on the
+                // same thread which occurs when we yield to await fd.readable().
+                // Instead, we await the FD outside of the prepared read, then handle the case where
+                // there are no events (ErrorKind::WouldBlock).
                 debug!("awaiting wayland socket read");
                 let mut guard = match timeout(RECEIVE_TIMEOUT, fd.readable()).await {
                     Result::Ok(v) => v,
@@ -154,6 +166,10 @@ impl WindowManager {
                         v => v,
                     }?;
                 }
+
+                // dispatch_pending runs the various callbacks scattered all over the place.
+                // They all run on this thread, which is handy since we don't need Send/Sync
+                // to pull events out via channels into other async tasks.
                 debug!("dispatching pending events");
                 state.access(|s| event_queue.dispatch_pending(s))?;
                 debug!("dispatch complete");
@@ -163,6 +179,8 @@ impl WindowManager {
         let state_accessor = WindowManagerStateAccessor::new(&self.state_cell);
         let handler = f(&self.conn, &self.qh, state_accessor, &mut self.events);
 
+        // Caution: the handler must not block waiting for a Wayland event, since these are dispatched
+        // from the receiver task which will only execute when the handler awaits.
         futures::select! {
             receiver_res = receiver.fuse() => receiver_res,
             handler_res = handler.fuse() => handler_res,
@@ -170,6 +188,16 @@ impl WindowManager {
     }
 }
 
+/// WindowManagerStateAccessor wraps access to a `WindowManagerState`, giving
+/// mutable access but only within a non-async context such that the reference
+/// has a bounded lifetime.
+///
+/// This lets us safely share a `WindowManagerState` between multiple async tasks
+/// on the same thread, namely within our Wayland client receiver and handler tasks.
+///
+/// The case we want to avoid is a reference to `WindowManagerState` is stored across
+/// an `await`, which would panic when the inner `RefCell` gets dereferenced in a
+/// different async task.
 pub struct WindowManagerStateAccessor<'a>(&'a RefCell<WindowManagerState>);
 
 impl<'a> WindowManagerStateAccessor<'a> {
@@ -185,17 +213,26 @@ impl<'a> WindowManagerStateAccessor<'a> {
 
 #[derive(Clone, Debug)]
 pub enum Event {
+    /// New output discovered (either just-connected or on app startup).
     NewOutput(wl::protocol::wl_output::WlOutput),
+    /// Redraw requested for a surface.
     RedrawRequested(wl::protocol::wl_surface::WlSurface),
 
+    /// Seat input method added.
     NewSeatCapability(wl::protocol::wl_seat::WlSeat, sctk::seat::Capability),
+    /// Seat input method removed.
     RemoveSeatCapability(wl::protocol::wl_seat::WlSeat, sctk::seat::Capability),
+    /// Key pressed.
     KeyPressed(sctk::seat::keyboard::KeyEvent),
 
+    /// Session locked successfully.
     SessionLocked,
+    /// Session lock failed.
     SessionLockFinished,
+    /// Lock surface ready to be configured.
     ConfigureLockSurface(SessionLockSurface, (u32, u32)),
 
+    /// Exit was requested and all messages before the sync have been processed.
     ExitSync,
 }
 
@@ -355,21 +392,6 @@ impl SessionLockHandler for WindowManagerState {
         self.events
             .unbounded_send(Event::ConfigureLockSurface(surface, configure.new_size))
             .expect("send event");
-        // let (output, _) = self
-        //     .surfaces
-        //     .iter()
-        //     .find(|(_, s)| surface.wl_surface() == s.wl_surface())
-        //     .unwrap();
-        // self.events
-        //     .unbounded_send(Event::ConfigureSurface(
-        //         Window {
-        //             display: conn.display(),
-        //             output: output.clone(),
-        //             surface: surface.wl_surface().clone(),
-        //         },
-        //         configure.new_size,
-        //     ))
-        //     .expect("send event");
     }
 }
 
@@ -514,24 +536,6 @@ impl SeatHandler for WindowManagerState {
         self.events
             .unbounded_send(Event::NewSeatCapability(seat, capability))
             .expect("send event");
-
-        // if capability == Capability::Keyboard && self.keyboard.is_none() {
-        //     println!("Set keyboard capability");
-        //     let keyboard = self
-        //         .seat_state
-        //         .get_keyboard_with_repeat(
-        //             qh,
-        //             &seat,
-        //             None,
-        //             self.loop_handle.clone(),
-        //             Box::new(|_state, _wl_kbd, event| {
-        //                 println!("Repeat: {:?} ", event);
-        //             }),
-        //         )
-        //         .expect("Failed to create keyboard");
-
-        //     self.keyboard = Some(keyboard);
-        // }
     }
 
     fn remove_capability(

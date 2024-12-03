@@ -46,6 +46,12 @@ impl NullAuthenticatorBackend {
     }
 }
 
+impl Default for NullAuthenticatorBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuthenticatorBackend for NullAuthenticatorBackend {
     fn authenticate(&mut self, _: &str) -> Result<()> {
         warn!("null authentication = success");
