@@ -245,6 +245,11 @@ async fn main() -> Result<()> {
                                     debug!("unknown key pressed: {:?}", keysym);
                                 }
                             };
+
+                            // Trigger a redraw on all srfaces as they may be frozen.
+                            for lock_surface in lock_surface_by_surface.values() {
+                                state.access(|s| s.queue_redraw(lock_surface.wl_surface().clone()));
+                            }
                         }
                         Event::ExitSync => {
                             info!("exiting");
