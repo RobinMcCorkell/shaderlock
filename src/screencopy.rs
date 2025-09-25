@@ -224,7 +224,7 @@ where
                     .unwrap()
                     .take()
                     .unwrap()
-                    .send(Err(todo!()))
+                    .send(Err(anyhow::anyhow!("screencopy failed")))
                     .unwrap();
             }
             zwlr_screencopy_frame_v1::Event::Damage { .. } => unimplemented!(),

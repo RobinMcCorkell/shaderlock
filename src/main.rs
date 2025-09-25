@@ -47,7 +47,7 @@ struct Args {
 
 fn get_shader_file() -> Result<std::path::PathBuf> {
     use rand::seq::IteratorRandom;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let file = glob::glob(&format!("{}/{}", DATADIR, SHADER_GLOB))
         .expect("Failed to parse shader file glob")
         .choose(&mut rng)

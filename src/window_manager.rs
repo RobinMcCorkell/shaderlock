@@ -441,9 +441,7 @@ impl ScreencopyHandler for WindowManagerState {
         &mut self,
         handle: crate::screencopy::ScreencopyBufferHandle<Self::ShmBuffer>,
     ) -> crate::screencopy::ScreencopyBuffer {
-        let bytes = self
-            .buffer_pool
-            .raw_data_mut(&handle.buffer.slot());
+        let bytes = self.buffer_pool.raw_data_mut(&handle.buffer.slot());
         ScreencopyBuffer::new(handle, bytes)
     }
 }
