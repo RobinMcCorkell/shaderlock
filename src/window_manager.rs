@@ -502,7 +502,18 @@ impl KeyboardHandler for WindowManagerState {
         _keyboard: &wl::protocol::wl_keyboard::WlKeyboard,
         _serial: u32,
         _modifiers: sctk::seat::keyboard::Modifiers,
+        _raw_modifiers: sctk::seat::keyboard::RawModifiers,
         _layout: u32,
+    ) {
+    }
+
+    fn repeat_key(
+        &mut self,
+        _conn: &wl::Connection,
+        _qh: &wl::QueueHandle<Self>,
+        _keyboard: &wl::protocol::wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _event: sctk::seat::keyboard::KeyEvent,
     ) {
     }
 }
