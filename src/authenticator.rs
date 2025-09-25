@@ -11,7 +11,7 @@ pub trait AuthenticatorBackend {
 
 pub struct PamAuthenticatorBackend {
     username: String,
-    auth: pam::Authenticator<'static, pam::PasswordConv>,
+    auth: pam::Client<'static, pam::PasswordConv>,
 }
 
 impl PamAuthenticatorBackend {
@@ -23,7 +23,7 @@ impl PamAuthenticatorBackend {
         info!("My username: {}", username);
 
         let auth =
-            pam::Authenticator::with_password(PAM_SERVICE).context("Failed to initialize PAM")?;
+            pam::Client::with_password(PAM_SERVICE).context("Failed to initialize PAM")?;
 
         Ok(Self { username, auth })
     }
@@ -32,7 +32,7 @@ impl PamAuthenticatorBackend {
 impl AuthenticatorBackend for PamAuthenticatorBackend {
     fn authenticate(&mut self, password: &str) -> Result<()> {
         self.auth
-            .get_handler()
+            .conversation_mut()
             .set_credentials(&self.username, password);
         self.auth.authenticate().context("PAM auth failed")
     }
