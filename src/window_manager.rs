@@ -443,8 +443,7 @@ impl ScreencopyHandler for WindowManagerState {
     ) -> crate::screencopy::ScreencopyBuffer {
         let bytes = self
             .buffer_pool
-            .canvas(&handle.buffer)
-            .expect("get buffer bytes");
+            .raw_data_mut(&handle.buffer.slot());
         ScreencopyBuffer::new(handle, bytes)
     }
 }

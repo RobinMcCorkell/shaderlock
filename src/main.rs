@@ -229,6 +229,7 @@ async fn main() -> Result<()> {
                                             session_lock.unlock();
                                             conn.display().sync(qh, ExitSync);
                                             conn.flush()?;
+                                            return Ok(());
                                         }
                                         Result::Err(e) => warn!("Authentication failed: {}", e),
                                     };
