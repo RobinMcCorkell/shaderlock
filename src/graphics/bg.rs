@@ -53,7 +53,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new<'buffer>(
+    pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         swapchain_format: wgpu::TextureFormat,
@@ -107,7 +107,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &device
                     .create_shader_module(wgpu::include_spirv!("../../resources/bg.vert.spv")),
-                entry_point: VS_MAIN,
+                entry_point: Some(VS_MAIN),
                 buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -116,7 +116,7 @@ impl State {
                     label: Some("shader"),
                     source: shader,
                 }),
-                entry_point: FS_MAIN,
+                entry_point: Some(FS_MAIN),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: swapchain_format,
                     blend: Some(wgpu::BlendState::REPLACE),
@@ -171,14 +171,14 @@ impl State {
         let height = screenshot.height();
         let width = screenshot.width();
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             screenshot.bytes(),
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(stride),
                 rows_per_image: Some(height),
@@ -254,7 +254,7 @@ impl State {
         let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("BG render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -265,6 +265,7 @@ impl State {
                     }),
                     store: wgpu::StoreOp::Store,
                 },
+                depth_slice: None,
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,

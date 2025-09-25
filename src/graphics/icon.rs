@@ -78,14 +78,14 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &device
                     .create_shader_module(wgpu::include_spirv!("../../resources/icon.vert.spv")),
-                entry_point: VS_MAIN,
+                entry_point: Some(VS_MAIN),
                 buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &device
                     .create_shader_module(wgpu::include_spirv!("../../resources/icon.frag.spv")),
-                entry_point: FS_MAIN,
+                entry_point: Some(FS_MAIN),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: swapchain_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -136,14 +136,14 @@ impl State {
         });
 
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             icon,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * icon.width()),
                 rows_per_image: Some(icon.height()),
@@ -213,12 +213,13 @@ impl State {
         let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("icon render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
                 },
+                depth_slice: None,
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,

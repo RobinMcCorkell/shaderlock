@@ -35,7 +35,7 @@ impl Manager {
         let icon = image::open(icon_file).context("Failed to read icon file")?;
 
         Ok(Manager {
-            instance: wgpu::Instance::new(wgpu::InstanceDescriptor {
+            instance: wgpu::Instance::new(&wgpu::InstanceDescriptor {
                 backends: wgpu::Backends::PRIMARY,
                 ..Default::default()
             }),
@@ -69,15 +69,13 @@ impl Manager {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    label: None,
                     required_features: wgpu::Features::PUSH_CONSTANTS,
                     required_limits: wgpu::Limits {
                         max_push_constant_size: self::bg::PUSH_CONSTANTS_SIZE,
                         ..wgpu::Limits::default()
                     },
-                    memory_hints: Default::default(),
+                    ..Default::default()
                 },
-                None, // Trace path
             )
             .await
             .context("Failed to get device")?;
